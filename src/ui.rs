@@ -53,25 +53,13 @@ pub fn draw(
     let [prompt_area, divider_area, body] = split(area, list);
     let (body, border_area) = split_border(body, config.border, list);
     let preview = preview(finder, &layout, body, theme, list).unwrap_or_default();
-    let preview_height = Constraint::Length(saturating_u16(preview.len()));
-    let [list_area, preview_area] = match list {
-        ListPosition::Below => Layout::vertical([Constraint::Fill(1), preview_height]).areas(body),
-        ListPosition::Above => {
-            let [preview_area, list_area] =
-                Layout::vertical([preview_height, Constraint::Fill(1)]).areas(body);
-            [list_area, preview_area]
-        }
-    };
+    let (list_area, preview_area) = split_preview(body, preview.len(), list);
 
     draw_prompt_line(frame, prompt_area, shell_prompt, finder, theme);
     draw_divider(frame, divider_area, finder, theme, status);
     let height = draw_list(frame, list_area, finder, &layout, theme, list, offset);
     frame.render_widget(Paragraph::new(preview), preview_area);
-
-    if let Some(border_area) = border_area {
-        let border = dashes(usize::from(border_area.width), theme);
-        frame.render_widget(Paragraph::new(border), border_area);
-    }
+    draw_border(frame, border_area, theme);
 
     height
 }
@@ -110,6 +98,24 @@ fn split_border(body: Rect, border: bool, list: ListPosition) -> (Rect, Option<R
         ListPosition::Above => {
             let [edge, rest] = Layout::vertical([row, Constraint::Fill(1)]).areas(body);
             (rest, Some(edge))
+        }
+    }
+}
+
+/// The list and the preview under it, or over it above the prompt line, the preview as tall as its
+/// lines and the list taking the rest
+fn split_preview(body: Rect, lines: usize, list: ListPosition) -> (Rect, Rect) {
+    let rest = Constraint::Fill(1);
+    let preview = Constraint::Length(saturating_u16(lines));
+
+    match list {
+        ListPosition::Below => {
+            let [list, preview] = Layout::vertical([rest, preview]).areas(body);
+            (list, preview)
+        }
+        ListPosition::Above => {
+            let [preview, list] = Layout::vertical([preview, rest]).areas(body);
+            (list, preview)
         }
     }
 }
@@ -240,6 +246,13 @@ fn draw_divider(
     };
 
     frame.render_widget(Paragraph::new(line), area);
+}
+
+/// Dashes across the border row, when there is one
+fn draw_border(frame: &mut Frame, area: Option<Rect>, theme: &Theme) {
+    if let Some(area) = area {
+        frame.render_widget(Paragraph::new(dashes(usize::from(area.width), theme)), area);
+    }
 }
 
 fn dashes(width: usize, theme: &Theme) -> Line<'static> {
