@@ -1,4 +1,4 @@
-//! The distinct commands, the query and its matches, apart from drawing them
+//! The distinct commands, the query and its matches
 
 use std::collections::HashMap;
 use std::mem;
@@ -9,7 +9,6 @@ use chrono::{DateTime, Local};
 use crate::history::Entry;
 
 const TIME_FORMAT: &str = "%Y-%m-%d %H:%M";
-/// The width of every time, years have four digits
 pub const TIME_WIDTH: usize = "2023-11-14 22:13".len();
 
 /// A distinct command and every history entry holding it, most recent first
@@ -27,20 +26,18 @@ pub struct Command {
 #[derive(Debug)]
 pub struct Match {
     pub command_index: usize,
-    /// Bytes of the command matched by the words of the query, for highlighting: sorted, apart
-    /// from each other, none for a query without words
+    /// Matched bytes of the command: sorted, apart, none for a query without words
     pub ranges: Vec<Range<usize>>,
 }
 
 #[derive(Debug)]
 pub struct Finder {
     commands: Vec<Command>,
-    /// Whether any command has a time, so the finder shows a column for them
+    /// Whether to show a time column
     has_times: bool,
     query: String,
-    /// Bytes into the query, where typing goes in, always on a character boundary
+    /// Byte offset into the query, on a character boundary
     cursor: usize,
-    /// The commands the query matches, kept in step with it
     matches: Vec<Match>,
     /// Index into the matches, 0 without any
     selected: usize,
@@ -176,7 +173,7 @@ impl Finder {
         self.select(self.selected + rows.max(1));
     }
 
-    /// Moves the selection, staying within the matches
+    /// Clamped to the matches
     pub fn select(&mut self, index: usize) {
         self.selected = index.min(self.matches.len().saturating_sub(1));
     }
@@ -195,8 +192,7 @@ impl Finder {
         }
     }
 
-    /// Where the word before the cursor starts, skipping the characters between. `in_word` tells
-    /// which characters words are made of.
+    /// Start of the word before the cursor, `in_word` tells which characters make words
     fn word_start(&self, in_word: impl Fn(char) -> bool) -> usize {
         self.query[..self.cursor]
             .trim_end_matches(|c| !in_word(c))
@@ -236,8 +232,8 @@ impl Finder {
     }
 }
 
-/// One command per distinct text, most recent first, with the entries it ran as. Bash keeps the
-/// trailing space of a completed word, so `ls ` and `ls` count as one command.
+/// One command per distinct text, most recent first. `ls ` and `ls` are one, bash keeps the space
+/// after a completion.
 fn commands(entries: &[Entry]) -> Vec<Command> {
     let mut commands: Vec<Command> = Vec::new();
     let mut positions: HashMap<&str, usize> = HashMap::new();
@@ -269,8 +265,8 @@ fn local_time(seconds: i64) -> Option<String> {
     Some(time.format(TIME_FORMAT).to_string())
 }
 
-/// Where each word of the query is in haystack, in any order, ignoring case. A word matches at
-/// its first occurrence, and ranges that overlap or touch are merged. None when a word is missing.
+/// Each query word's first occurrence, in any order, ignoring case, touching ranges merged. None
+/// when a word is missing.
 fn find_words(haystack: &str, query: &str) -> Option<Vec<Range<usize>>> {
     let mut found = query
         .split_whitespace()

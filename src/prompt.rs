@@ -66,9 +66,8 @@ const BRIGHT_COLORS: [Color; 8] = [
     Color::White,
 ];
 
-/// The last line of a prompt as bash prints it, from `${PS1@P}`, styled by its SGR sequences. Other
-/// escape sequences, like a window title, and control characters, like the `\[` `\]` markers bash
-/// turns into `\001` and `\002`, are left out.
+/// The last line of `${PS1@P}`, styled by its SGR sequences. Other escapes and control characters
+/// are dropped.
 pub fn parse(text: &str) -> Line<'static> {
     let mut spans: Vec<Span<'static>> = Vec::new();
     let mut style = Style::new();
@@ -81,8 +80,7 @@ pub fn parse(text: &str) -> Line<'static> {
                     style = sgr(style, &params);
                 }
             }
-            // A style set on an earlier line still holds on the last one. A carriage return starts
-            // the line over, as prompts with a part on the right do after printing it.
+            // Styles carry over lines. \r starts the line over, as right-aligned prompts do.
             '\n' | '\r' => spans.clear(),
             c if c.is_control() => {}
             c => match spans.last_mut() {
@@ -101,8 +99,7 @@ fn escape(chars: &mut Chars) -> Option<String> {
         '[' => {
             let mut params = String::new();
 
-            // Parameter and intermediate bytes up to the final one. Private sequences, like
-            // \e[>4;2m for keyboard modes, end with m too, but have more than digits, ; and :.
+            // Up to the final byte. Private ones like \e[>4;2m end with m too, but aren't SGR.
             for c in chars.by_ref() {
                 if ('@'..='~').contains(&c) {
                     let codes = params.chars().all(|c| matches!(c, '0'..='9' | ';' | ':'));
@@ -200,8 +197,7 @@ fn number(code: &str) -> u16 {
     code.parse().unwrap_or(0)
 }
 
-/// The color after `FG_EXTENDED` or `BG_EXTENDED`, in its parts after colons or in the codes after
-/// it: an index of 256 colors, or red, green and blue. After colons a color space may come first.
+/// The color after `FG_EXTENDED` or `BG_EXTENDED`: an index or RGB, in colon parts or next codes
 fn extended_color(parts: &[u16], params: &mut Split<char>) -> Option<Color> {
     let parts = if parts.is_empty() {
         let kind = number(params.next()?);

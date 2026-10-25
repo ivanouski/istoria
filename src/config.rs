@@ -1,4 +1,4 @@
-//! The config file and the colors it sets
+//! The config file
 
 use std::env;
 use std::fmt;
@@ -13,8 +13,7 @@ use serde::de::{self, Deserializer, MapAccess, Visitor};
 
 use crate::context::Context;
 
-/// The defaults as a config file, for --help and --init-config. A test keeps them the same as
-/// `Config::default`.
+/// The defaults as a config file, for --help and --init-config
 pub const DEFAULT: &str = r#"height  = 12      # rows of the pane, the terminal's at most
 list    = "below" # or "above" the prompt line, like fzf
 border  = false   # a line on the far edge of the pane
@@ -29,28 +28,25 @@ dim      = "dark-gray"     # times, run counts, cuts, dividers, border
 selected = { bg = "238" }  # the selected row, under the match
 "#;
 
-/// Rows of the pane without a height in the config
 const DEFAULT_HEIGHT: u16 = 12;
 /// The prompt line, the divider and a row of the list
 const MIN_HEIGHT: u16 = 3;
 
-/// The config file, every key optional
 #[derive(Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
-    /// Rows of the pane, fewer when the terminal has fewer
+    /// Capped at the terminal's height
     #[serde(deserialize_with = "height")]
     pub height: u16,
     pub list: ListPosition,
-    /// A line on the edge of the pane away from the prompt line
+    /// A line on the pane's edge away from the prompt line
     pub border: bool,
-    /// The selected command in full past the list when its row is cut
+    /// The selected command in full when its row is cut
     pub preview: bool,
     pub colors: Theme,
 }
 
-/// Where the list goes from the prompt line. Above it, the prompt line is the last row of the pane
-/// and the list goes up from there, the most recent command nearest to it.
+/// Where the list goes from the prompt line
 #[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ListPosition {
@@ -76,21 +72,20 @@ impl Default for Config {
 pub struct Theme {
     #[serde(deserialize_with = "style")]
     pub prompt: Style,
-    /// The match count in the divider next to the prompt line
+    /// The match count in the divider
     #[serde(deserialize_with = "style")]
     pub count: Style,
-    /// The status after Ctrl-D deleted a command, or failed to
+    /// The status after Ctrl-D deletes a command
     #[serde(deserialize_with = "style")]
     pub deleted: Style,
     #[serde(deserialize_with = "style")]
     pub error: Style,
     #[serde(rename = "match", deserialize_with = "style")]
     pub matched: Style,
-    /// The time column, the number of runs and the ellipses of cut commands, on rows other than
-    /// the selected one, the dividers and the border
+    /// Times, run counts and ellipses off the selected row, the dividers and the border
     #[serde(deserialize_with = "style")]
     pub dim: Style,
-    /// The whole selected row, with the match drawn over it
+    /// The selected row, under the match
     #[serde(deserialize_with = "style")]
     pub selected: Style,
 }
@@ -104,15 +99,14 @@ impl Default for Theme {
             error: Style::new().fg(Color::Red),
             matched: Style::new().fg(Color::Yellow).bold(),
             dim: Style::new().fg(Color::DarkGray),
-            // A gray a step above the usual dark backgrounds: 236 is close to them, and dark gray
-            // is the color of the dim text on the other rows
+            // 236 is too close to dark backgrounds, dark gray is the dim text
             selected: Style::new().bg(Color::Indexed(238)),
         }
     }
 }
 
 impl Config {
-    /// Reads the config file, the defaults when there is none
+    /// The defaults when there is no file
     pub fn load() -> Result<Self, String> {
         let Some(path) = path() else {
             return Ok(Self::default());
@@ -125,7 +119,7 @@ impl Config {
         }
     }
 
-    /// Writes the defaults to the config file, never over one already there, returns its path
+    /// Writes the defaults, never over an existing file, returns its path
     pub fn init() -> Result<PathBuf, String> {
         let path = path().ok_or("XDG_CONFIG_HOME and HOME are not set")?;
         let cannot_create = |error: io::Error| format!("cannot create {}: {error}", path.display());
@@ -142,7 +136,7 @@ impl Config {
                 io::ErrorKind::AlreadyExists => format!("{} already exists", path.display()),
                 _ => cannot_create(error),
             })?;
-        // A half-written file would be taken for a config the next time, by hdf and by itself
+        // Leaves no half-written config behind
         if let Err(error) = file.write_all(DEFAULT.as_bytes()) {
             let _ = fs::remove_file(&path);
             return Err(cannot_create(error));
@@ -156,7 +150,7 @@ impl Config {
     }
 }
 
-/// A relative `XDG_CONFIG_HOME` is invalid, the XDG spec says to ignore it
+/// A relative `XDG_CONFIG_HOME` is ignored, as the XDG spec says
 fn path() -> Option<PathBuf> {
     env::var_os("XDG_CONFIG_HOME")
         .filter(|dir| Path::new(dir).is_absolute())

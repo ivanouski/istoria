@@ -4,11 +4,8 @@ require 'io/console'
 require 'pty'
 require 'timeout'
 
-# Runs a command in a pseudo terminal and keeps a model of its screen, so tests can type keys
-# and read what a user would see. The model knows the escape sequences ratatui sends through
-# crossterm: cursor moves, clearing, styles (ignored, the raw output keeps them), the cursor
-# position query, which it answers the way a terminal would, and synchronized updates, whose
-# frames it shows only once whole.
+# Runs a command in a pseudo terminal and models its screen from crossterm's escape sequences,
+# answering cursor queries and showing synchronized updates once whole.
 class TerminalSession
   TIMEOUT = 5
 
@@ -95,8 +92,7 @@ class TerminalSession
     close
   end
 
-  # Closes the terminal without killing anything, like closing its window, and waits for the
-  # process to exit, returns its status
+  # Closes the terminal like its window, returns the exit status
   def hang_up
     @reader.close
     @writer.close
@@ -104,8 +100,7 @@ class TerminalSession
   end
 
   def close
-    # The whole process group, a shell and what it started, which outlives the shell otherwise.
-    # PTY.spawn makes the command the leader of its own session and group.
+    # The whole group, PTY.spawn makes the command its leader
     Process.kill('KILL', -@pid)
   rescue Errno::ESRCH
     nil
@@ -138,7 +133,7 @@ class TerminalSession
     @shown = snapshot unless @synchronized
   end
 
-  # What a test sees, which a synchronized update changes only at its end
+  # What tests see, changed by a synchronized update only at its end
   def snapshot
     { screen: @grid.map { |row| row.join.rstrip }, cursor: [@row, @column] }
   end

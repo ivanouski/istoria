@@ -2,7 +2,7 @@
 
 use std::fmt::Display;
 
-/// Turns an error into a message for the user, after what failed: `cannot delete: <error>`
+/// Prefixes an error with what failed: `cannot delete: <error>`
 pub trait Context<T> {
     fn context(self, prefix: impl Display) -> Result<T, String>;
 }

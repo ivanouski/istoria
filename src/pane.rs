@@ -11,13 +11,13 @@ use ratatui::{Frame, Terminal, TerminalOptions, Viewport};
 
 use crate::tty::{RawMode, StdoutToTty};
 
-/// Holds a whole frame, so it reaches the terminal at once rather than cell by cell
+/// Fits a whole frame, so it's written at once
 const FRAME_BUFFER: usize = 1 << 16;
 
-/// The finder's pane, drawn on the terminal itself so the finder works with stdout captured
+/// Drawn on /dev/tty, so it works with stdout captured
 pub struct Pane {
     terminal: Terminal<CrosstermBackend<BufWriter<File>>>,
-    /// Of the cursor when opened, on text to go back to unless 0
+    /// The cursor's when opened, on text to go back to unless 0
     column: u16,
     /// Fields drop in order, so these are restored after the terminal is gone
     _raw_mode: RawMode,
@@ -25,14 +25,13 @@ pub struct Pane {
 }
 
 impl Pane {
-    /// Height rows tall, or as tall as the terminal
+    /// At most the terminal's height
     pub fn open(height: u16) -> io::Result<Self> {
         let mut tty = OpenOptions::new().read(true).write(true).open("/dev/tty")?;
         let stdout = StdoutToTty::new(&tty)?;
         let raw_mode = RawMode::enable()?;
 
-        // Bash clears the prompt line before running a bind -x command, so the pane opens there.
-        // When the cursor is still on some text, it opens on the next line to keep that text.
+        // Bash clears the prompt line for bind -x, if text is still there the pane opens below it
         let (column, _) = cursor::position()?;
 
         if column > 0 {
@@ -55,8 +54,7 @@ impl Pane {
         })
     }
 
-    /// Terminals that support synchronized updates show the frame only once all of it arrived. The
-    /// update is ended even when drawing fails, or the terminal keeps waiting for it.
+    /// In a synchronized update, ended even when drawing fails
     pub fn draw(&mut self, render: impl FnOnce(&mut Frame)) -> io::Result<()> {
         queue!(self.terminal.backend_mut(), BeginSynchronizedUpdate)?;
         let drawn = self.terminal.draw(render).map(|_| ());
@@ -68,9 +66,8 @@ impl Pane {
         self.terminal.get_frame().area().width
     }
 
-    /// Clears the pane but the shell prompt, the first kept columns of its first row, and puts the
-    /// cursor back where it was. Bash draws the same prompt there after hdf, so the line doesn't
-    /// flash empty in between. It takes the rest of the line for empty, so the query goes.
+    /// Clears the pane but the shell prompt, which bash redraws in place, so the line doesn't flash
+    /// empty
     pub fn close(mut self, kept: usize) -> io::Result<()> {
         let area = self.terminal.get_frame().area();
         // Opened under some text, the cursor goes back to it and the pane has no prompt to keep

@@ -12,21 +12,17 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 use crate::config::{Config, ListPosition, Theme};
 use crate::finder::{Command, Finder, Match, TIME_WIDTH};
 
-/// Before the commands, or their times, when they do not line up under the query
+/// Before rows that don't line up under the query
 const INDENT: usize = 2;
-/// The time and the two spaces between it and the command
 const TIME_COLUMN: usize = TIME_WIDTH + 2;
-/// In place of the text cut from a command
 const ELLIPSIS: &str = "…";
-/// In place of the list when nothing matches, or the history is empty
 const NO_MATCHES: &str = "no matches";
 const NO_COMMANDS: &str = "no commands";
-/// Most lines of the preview, the last one ending in … when the command needs more
+/// Most lines of the preview
 const PREVIEW_LINES: usize = 3;
-/// Kept for the list when the preview takes rows from it
+/// Left for the list under the preview
 const MIN_LIST_ROWS: usize = 3;
 const DASH: &str = "─";
-/// After the count
 const COUNT_END: &str = " ──";
 
 /// The outcome of the last Ctrl-D, shown in place of the count until the next key
@@ -36,8 +32,8 @@ pub enum Status {
     Failed(String),
 }
 
-/// Returns the rows of the list, a page for PgUp and PgDn. The offset is the first match in view,
-/// kept from one draw to the next.
+/// Returns the list's rows, the page for PgUp and PgDn. The offset, the first match in view, is
+/// kept between draws.
 pub fn draw(
     frame: &mut Frame,
     finder: &Finder,
@@ -68,9 +64,7 @@ pub fn draw(
     height
 }
 
-/// The prompt line, the divider and the rest for the list and the preview. Above the list, the
-/// prompt line is the last row and the divider the one over it. The prompt line keeps its row in a
-/// pane of one.
+/// The prompt line, the divider and the body, from the bottom up above the list
 fn split(area: Rect, list: ListPosition) -> [Rect; 3] {
     let row = Constraint::Length(1);
 
@@ -85,8 +79,7 @@ fn split(area: Rect, list: ListPosition) -> [Rect; 3] {
     }
 }
 
-/// The rest of the body and the border on its far edge, away from the prompt line, when the border
-/// is on and leaves a row for the list
+/// The border on the body's far edge, when it's on and leaves a row for the list
 fn split_border(body: Rect, border: bool, list: ListPosition) -> (Rect, Option<Rect>) {
     if !border || body.height < 2 {
         return (body, None);
@@ -106,8 +99,7 @@ fn split_border(body: Rect, border: bool, list: ListPosition) -> (Rect, Option<R
     }
 }
 
-/// The list and the preview under it, or over it above the prompt line, the preview as tall as its
-/// lines and the list taking the rest
+/// The list and the preview past it, as tall as its lines
 fn split_preview(body: Rect, lines: usize, list: ListPosition) -> (Rect, Rect) {
     let rest = Constraint::Fill(1);
     let preview = Constraint::Length(saturating_u16(lines));
@@ -124,8 +116,7 @@ fn split_preview(body: Rect, lines: usize, list: ListPosition) -> (Rect, Rect) {
     }
 }
 
-/// Draws the matches in view, or says there are none, returns the rows of the list. Above the
-/// prompt line the list goes up, the first match in view on the last row.
+/// Draws the matches in view, returns the list's rows. Above the prompt line the list goes up.
 fn draw_list(
     frame: &mut Frame,
     area: Rect,
@@ -173,8 +164,7 @@ fn draw_list(
     height
 }
 
-/// The first match in view: the one before, moved just enough to keep the selected match in view.
-/// A list without rows starts at the selected match.
+/// The first match in view, scrolled just enough to keep the selection in it
 fn list_offset(offset: usize, finder: &Finder, height: usize) -> usize {
     let offset = offset.min(finder.matches().len().saturating_sub(1));
 
@@ -187,8 +177,7 @@ fn list_offset(offset: usize, finder: &Finder, height: usize) -> usize {
     }
 }
 
-/// The shell prompt when it shows anything and takes at most 60% of the pane, so the query has
-/// room, None for > in its place
+/// The shell prompt when it shows anything and leaves the query room, None for >
 pub fn shell_prompt<'a>(prompt: Option<&'a Line<'a>>, width: u16) -> Option<&'a Line<'a>> {
     prompt.filter(|prompt| prompt.width() > 0 && prompt.width() * 5 <= usize::from(width) * 3)
 }
@@ -252,7 +241,6 @@ fn draw_divider(
     frame.render_widget(Paragraph::new(line), area);
 }
 
-/// Dashes across the border row, when there is one
 fn draw_border(frame: &mut Frame, area: Option<Rect>, theme: &Theme) {
     if let Some(area) = area {
         frame.render_widget(Paragraph::new(dashes(usize::from(area.width), theme)), area);
@@ -263,8 +251,7 @@ fn dashes(width: usize, theme: &Theme) -> Line<'static> {
     Line::styled(DASH.repeat(width), theme.dim)
 }
 
-/// The query as room columns show it, and the column of the cursor in it. A cursor past the room
-/// keeps to the last column, the text before it cut from the start with … in its place.
+/// The query in room columns and the cursor's column, cut from the start to keep the cursor in view
 fn scroll(query: &str, cursor: usize, room: usize) -> (String, usize) {
     let column = query[..cursor].width();
 
@@ -343,8 +330,7 @@ impl RowLayout {
         }
     }
 
-    /// The part of a command its row shows, next to its number of runs, keeping the matches in
-    /// view as far as they fit
+    /// The part of a command its row shows, keeping the matches in view
     fn fit(&self, command: &Command, ranges: &[Range<usize>]) -> Fitted {
         let runs_width = runs(command).map_or(0, |runs| runs.width());
 
@@ -356,8 +342,7 @@ impl RowLayout {
     }
 }
 
-/// Under a shell prompt the commands start where the query does, the times right before them.
-/// Without one, or with one too narrow for the times, they keep the indent.
+/// Under the query, the times before it, unless the prompt is missing or too narrow for them
 fn command_column(prompt_width: Option<usize>, time_width: usize) -> usize {
     prompt_width
         .filter(|&width| width >= time_width)
@@ -372,8 +357,7 @@ fn row<'a>(
     theme: &Theme,
 ) -> ListItem<'a> {
     let command = &finder.commands()[found.command_index];
-    // The selected row has a style of its own across its width, the match drawn over it. Its
-    // time and number of runs are not dimmed, dim colors are hard to read on its background.
+    // Not dimmed on the selected row, dim is hard to read on its background
     let dim = if selected { Style::new() } else { theme.dim };
     let fitted = layout.fit(command, &found.ranges);
     let mut spans = vec![Span::raw(layout.indent.as_str())];
@@ -402,8 +386,7 @@ fn row<'a>(
         spans.push(Span::styled(runs, dim));
     }
 
-    // The item style goes on the row first and the spans patch it, while a highlight style
-    // of the list would go over the spans and could hide the match
+    // Styled per item, a list highlight style would cover the match
     let item = ListItem::new(Line::from(spans));
 
     if selected {
@@ -420,8 +403,7 @@ fn runs(command: &Command) -> Option<String> {
     (runs > 1).then(|| format!(" ({runs})"))
 }
 
-/// The selected command in full past the list, apart from it by a divider, when its row is cut and
-/// the pane has room for it
+/// The selected command in full past the list, when its row is cut and there's room
 fn preview<'a>(
     finder: &'a Finder,
     layout: &RowLayout,
@@ -474,8 +456,7 @@ fn preview<'a>(
     Some(preview)
 }
 
-/// The shown part of text, with what it holds of the matches highlighted. The ranges are sorted
-/// and apart, as the finder makes them.
+/// The shown part of text, its matches highlighted. The ranges are sorted and apart.
 fn highlight<'a>(
     text: &'a str,
     ranges: &[Range<usize>],
@@ -522,8 +503,7 @@ impl Fitted {
     }
 }
 
-/// Fits text into width columns, ellipses included, keeping the match in view: the start of the
-/// text when the match is in it, else the end of the text when the match is in that, else the
+/// Fits text into width columns, keeping the match in view: the start, else the end, else the
 /// match a third of the way in
 fn fit(text: &str, range: &Range<usize>, width: usize) -> Fitted {
     let fitted = |shown, cut_start, cut_end| Fitted {
@@ -554,8 +534,8 @@ fn fit(text: &str, range: &Range<usize>, width: usize) -> Fitted {
     fitted(start..prefix_end(text, start, room), true, true)
 }
 
-/// Byte ranges of the lines text wraps into at width columns, broken after spaces where possible.
-/// A space at the end of a full line stays on it, past the width.
+/// Lines of text wrapped at width columns, after spaces where possible. A space ending a full line
+/// stays on it.
 fn wrap(text: &str, width: usize) -> Vec<Range<usize>> {
     let mut lines = Vec::new();
     let mut start = 0;
@@ -1282,8 +1262,7 @@ mod tests {
         assert_eq!(Render::new(&finder).preview().height(8).run().page, 6);
     }
 
-    /// The rows of a pane of 5 with the list above the prompt line: the list, the divider and the
-    /// prompt line
+    /// Rows of a pane of 5 with the list above
     const ABOVE_DIVIDER_ROW: u16 = 3;
     const ABOVE_PROMPT_ROW: u16 = 4;
 

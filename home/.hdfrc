@@ -37,7 +37,8 @@ __hdf_search() {
 }
 
 # Up / Down search history with hdf, Enter runs the pick. Ctrl-P / Ctrl-N still step through it.
-# The macro's keys are made up, no terminal sends them.
+# Up / Down run a macro of two fake keys: one opens hdf, the other runs the pick. No terminal
+# sends \e[9100~ or \e[9101~, so they can't clash with real keys.
 bind -x '"\e[9100~": __hdf_search'
 bind '"\e[A": "\e[9100~\e[9101~"'
 bind '"\eOA": "\e[9100~\e[9101~"'

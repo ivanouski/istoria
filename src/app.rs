@@ -15,7 +15,6 @@ use crate::pane::Pane;
 use crate::ui::Status;
 use crate::{tty, ui};
 
-/// How the finder was left
 #[derive(Debug, PartialEq)]
 pub enum Outcome {
     /// Enter on a command, to run it
@@ -30,7 +29,7 @@ pub enum Outcome {
     Signaled(usize),
 }
 
-/// Runs the finder in a pane from the cursor's line down, returns how it was left
+/// Runs the finder until a key or a signal ends it
 pub fn pick(
     finder: &mut Finder,
     history: &mut History,
@@ -62,8 +61,7 @@ pub fn pick(
         }
     };
 
-    // The shell prompt stays for bash to draw over, on the first row where bash drew it. Above
-    // the list the prompt line is the last row, so the prompt moves up first.
+    // Bash redraws the shell prompt on the first row, above the list it moves up there first
     let width = pane.width();
     let moved = match list {
         ListPosition::Below => Ok(()),
@@ -78,9 +76,8 @@ pub fn pick(
     }
 }
 
-/// Leaves the finder with an outcome, or stays with the status to show until the next key. PgUp and
-/// PgDn move the selection by the page, the rows of the list. The keys move it up and down the
-/// screen, so above the prompt line Up goes to older commands.
+/// Ends the finder with an outcome, or keeps it open with a status to show. Above the prompt line
+/// Up goes to older commands.
 fn handle_key(
     key: KeyEvent,
     finder: &mut Finder,
@@ -115,8 +112,7 @@ fn handle_key(
         (KeyCode::Down, _) | (KeyCode::Char('n'), true) => finder.down(),
         (KeyCode::PageUp, _) => finder.page_up(page),
         (KeyCode::PageDown, _) => finder.page_down(page),
-        // Option-Left and Right on a Mac send Alt-B and F or Alt-Left and Right, Linux terminals
-        // Ctrl-Left and Right
+        // Option-Left/Right on a Mac send Alt-B/F or Alt-Left/Right, Linux Ctrl-Left/Right
         (KeyCode::Left, _) if control || alt => finder.word_left(),
         (KeyCode::Right, _) if control || alt => finder.word_right(),
         (KeyCode::Char('b'), false) if alt => finder.word_left(),
@@ -138,7 +134,7 @@ fn handle_key(
     Continue(None)
 }
 
-/// Deletes every occurrence of the selected command and reloads the history
+/// Deletes every occurrence of the selected command
 fn delete(finder: &mut Finder, history: &mut History) -> Option<Status> {
     let command = finder.selection()?;
     let message = format!("deleted {}", command.text);

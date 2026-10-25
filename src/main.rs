@@ -25,9 +25,8 @@ use context::Context;
 use finder::Finder;
 use history::History;
 
-// .hdfrc tells these apart: a pick runs, an edit or the query goes on the prompt line, an error or
-// Ctrl-C leaves the line as it was. Printing the query has a status of its own, so .hdfrc does not
-// take a failure of an hdf without --print-query, an older one, for an empty query.
+// Exit statuses .hdfrc acts on. The query's own status keeps an older hdf's failure from reading
+// as an empty query.
 const QUIT_STATUS: u8 = 1;
 const ERROR_STATUS: u8 = 2;
 const QUERY_STATUS: u8 = 3;

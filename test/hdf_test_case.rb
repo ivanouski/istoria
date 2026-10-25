@@ -80,7 +80,7 @@ class HdfTestCase < Minitest::Test
     @session.wait_for { |lines| lines.each_cons(2).any? { |line, below| line == prompt && below.match?(PANE_DIVIDER) } }
   end
 
-  # hdf draws the same prompt line as bash, so its pane going away is what tells them apart
+  # hdf draws bash's prompt line too, only its pane going tells them apart
   def wait_for_bash(line)
     @session.wait_for { |lines| lines.first == line && lines.none? { |below| below.match?(PANE_DIVIDER) } }
   end
@@ -113,7 +113,7 @@ class HdfTestCase < Minitest::Test
     assert_equal expected, @session.screen.grep(/\A +\d/)
   end
 
-  # The status of an earlier Ctrl-D may still be there, so the screen has to change as well
+  # An earlier status may still show
   def delete
     before = @session.screen
     @session.press(:ctrl_d)

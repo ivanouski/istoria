@@ -28,8 +28,7 @@ impl Drop for RawMode {
     }
 }
 
-/// Points stdout at the terminal until dropped. crossterm asks the terminal for the cursor position
-/// on stdout, which is a pipe when the command is captured, as in the bash setup.
+/// Points stdout at the terminal until dropped, crossterm queries the cursor through it
 pub struct StdoutToTty {
     saved: OwnedFd,
 }
@@ -49,9 +48,7 @@ impl Drop for StdoutToTty {
     }
 }
 
-/// Raw mode keeps Ctrl-C from sending SIGINT, but other processes can still send signals: they are
-/// taken as a way out, so the pane is cleared and the terminal restored like on Esc. Returns the
-/// number of the signal once one arrived, 0 until then.
+/// Signals close the finder like Esc. The signal number once one arrived, 0 until then.
 pub fn watch_signals() -> io::Result<Arc<AtomicUsize>> {
     let signal = Arc::new(AtomicUsize::new(0));
 
@@ -65,19 +62,16 @@ pub fn watch_signals() -> io::Result<Arc<AtomicUsize>> {
     Ok(signal)
 }
 
-/// crossterm keeps reading a closed terminal and never returns, so the event loop never sees the
-/// signal that came with closing it. Exits for the signal once the loop has had time to clean up.
+/// crossterm blocks on a closed terminal, so exit for the signal once the loop had time to clean up
 fn exit_when_stuck(signal: Arc<AtomicUsize>) {
-    // Compared with the parent at the start, not with 1: a shell that is PID 1, as in a container,
-    // runs hdf as its child
+    // Not 1: a shell running as PID 1, as in a container, is hdf's parent
     let parent = std::os::unix::process::parent_id();
 
     thread::spawn(move || {
         loop {
             thread::sleep(Duration::from_millis(100));
 
-            // Orphaned: the shell is gone, maybe without a signal reaching hdf. Taken for SIGHUP,
-            // so a loop that is not stuck closes the pane and restores the terminal.
+            // Orphaned without a signal: taken for SIGHUP
             if std::os::unix::process::parent_id() != parent {
                 let hangup = SIGHUP as usize;
                 let _ = signal.compare_exchange(0, hangup, Ordering::Relaxed, Ordering::Relaxed);

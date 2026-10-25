@@ -12,11 +12,11 @@ use std::str;
 pub struct Entry {
     /// The command as stored, without the newline that ends it
     pub original: String,
-    /// The command as shown in the finder: control characters like newlines and tabs become spaces
+    /// As shown, control characters turned into spaces
     pub text: String,
-    /// Seconds since the epoch, from the `#<epoch>` line bash writes when HISTTIMEFORMAT is set
+    /// From the `#<epoch>` line bash writes with HISTTIMEFORMAT
     pub time: Option<i64>,
-    /// Bytes of the entry in the file, including its timestamp line and trailing newline
+    /// Bytes in the file, timestamp line and newline included
     bytes: Range<usize>,
 }
 
@@ -54,8 +54,7 @@ impl History {
     /// Removes the entries from the file, keeping lines other shells appended since it was loaded
     pub fn delete(&self, indices: &[usize]) -> io::Result<()> {
         let current = fs::read(&self.path)?;
-        // A line appended after a last line without a newline joins it, so the loaded entries no
-        // longer match the file
+        // A line appended to a last line without a newline joins it
         let joined = current.len() > self.content.len()
             && !self.content.is_empty()
             && !self.content.ends_with(b"\n");
@@ -73,7 +72,6 @@ impl History {
     }
 }
 
-/// The lines of an entry in the file
 struct EntryLines {
     timestamp: Option<Range<usize>>,
     command: Range<usize>,
@@ -99,10 +97,8 @@ impl EntryLines {
     }
 }
 
-/// With HISTTIMEFORMAT set bash writes a `#<epoch>` line before each entry, which can start
-/// anywhere in the file when the setting was turned on later. Like bash, a timestamp belongs to the
-/// line after it. When the file starts with a timestamp, an entry also spans every line up to the
-/// next timestamp (multi-line commands), otherwise every line is an entry.
+/// Bash writes `#<epoch>` before each entry with HISTTIMEFORMAT, from wherever it was turned on. A
+/// file starting with one has multi-line entries, otherwise each line is one.
 pub fn parse(content: &[u8]) -> Vec<Entry> {
     group(content, line_ranges(content))
         .into_iter()
@@ -205,8 +201,7 @@ fn write_atomically(path: &Path, content: &[u8]) -> io::Result<()> {
     result
 }
 
-/// Writes the content to the temporary file, then moves it over the path with the path's
-/// permissions
+/// Writes to the temporary file, then moves it over path, keeping path's permissions
 fn replace_through(path: &Path, temp_path: &Path, content: &[u8]) -> io::Result<()> {
     let mut file = create_private(temp_path)?;
     file.write_all(content)?;
@@ -215,8 +210,7 @@ fn replace_through(path: &Path, temp_path: &Path, content: &[u8]) -> io::Result<
     fs::rename(temp_path, path)
 }
 
-/// A new file only its owner can read, as history holds whatever was typed on the command line.
-/// A file left at the path by an earlier, killed run is replaced, as it may be readable by others.
+/// Owner-only, as history may hold secrets. Replaces a file a killed run left behind.
 fn create_private(path: &Path) -> io::Result<File> {
     if let Err(error) = fs::remove_file(path)
         && error.kind() != io::ErrorKind::NotFound
