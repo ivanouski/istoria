@@ -15,9 +15,10 @@ use crate::context::Context;
 
 /// The defaults as a config file, for --help and --init-config. A test keeps them the same as
 /// `Config::default`.
-pub const DEFAULT: &str = r#"height = 12       # rows of the pane, the terminal's at most
-list   = "below"  # or "above" the prompt line, like fzf
-border = false    # a line on the far edge of the pane
+pub const DEFAULT: &str = r#"height  = 12      # rows of the pane, the terminal's at most
+list    = "below" # or "above" the prompt line, like fzf
+border  = false   # a line on the far edge of the pane
+preview = false   # the selected command in full when its row is cut
 [colors]
 prompt   = { fg = "blue", bold = true }
 count    = "dark-gray"     # matches/commands
@@ -43,6 +44,8 @@ pub struct Config {
     pub list: ListPosition,
     /// A line on the edge of the pane away from the prompt line
     pub border: bool,
+    /// The selected command in full past the list when its row is cut
+    pub preview: bool,
     pub colors: Theme,
 }
 
@@ -62,6 +65,7 @@ impl Default for Config {
             height: DEFAULT_HEIGHT,
             list: ListPosition::default(),
             border: false,
+            preview: false,
             colors: Theme::default(),
         }
     }
@@ -265,6 +269,7 @@ mod tests {
         assert_eq!(config.height, Config::default().height);
         assert_eq!(config.list, Config::default().list);
         assert_eq!(config.border, Config::default().border);
+        assert_eq!(config.preview, Config::default().preview);
         assert_eq!(config.colors, Theme::default());
     }
 
@@ -293,6 +298,13 @@ mod tests {
         assert!(!Config::parse("").unwrap().border);
         assert!(Config::parse("border = true\n").unwrap().border);
         assert!(error("border = \"yes\"\n").contains("expected a boolean"));
+    }
+
+    #[test]
+    fn reads_the_preview() {
+        assert!(!Config::parse("").unwrap().preview);
+        assert!(Config::parse("preview = true\n").unwrap().preview);
+        assert!(error("preview = \"yes\"\n").contains("expected a boolean"));
     }
 
     #[test]

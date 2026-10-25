@@ -78,12 +78,15 @@ class HdfTestCase < Minitest::Test
   def wait_for_hdf_in_bash(query = '')
     prompt = "$ #{query}".rstrip
     @session.wait_for { |lines| lines.each_cons(2).any? { |line, below| line == prompt && below.match?(PANE_DIVIDER) } }
-    sleep(0.05)
+  end
+
+  # hdf draws the same prompt line as bash, so its pane going away is what tells them apart
+  def wait_for_bash(line)
+    @session.wait_for { |lines| lines.first == line && lines.none? { |below| below.match?(PANE_DIVIDER) } }
   end
 
   def wait_for_pane
     @session.wait_for { |lines| lines.any? { |line| line.match?(PANE_DIVIDER) } }
-    sleep(0.05)
   end
 
   def pane
@@ -110,10 +113,11 @@ class HdfTestCase < Minitest::Test
     assert_equal expected, @session.screen.grep(/\A +\d/)
   end
 
+  # The status of an earlier Ctrl-D may still be there, so the screen has to change as well
   def delete
+    before = @session.screen
     @session.press(:ctrl_d)
-    @session.wait_for { |lines| lines.any? { |line| line.match?(/ (deleted|cannot) /) } }
-    sleep(0.05)
+    @session.wait_for { |lines| lines != before && lines.any? { |line| line.match?(/ (deleted|cannot) /) } }
   end
 
   def assert_picks(*keys, command, status: 0)

@@ -52,7 +52,11 @@ pub fn draw(
     let layout = RowLayout::new(finder, shell_prompt.map(Line::width), area.width);
     let [prompt_area, divider_area, body] = split(area, list);
     let (body, border_area) = split_border(body, config.border, list);
-    let preview = preview(finder, &layout, body, theme, list).unwrap_or_default();
+    let preview = config
+        .preview
+        .then(|| preview(finder, &layout, body, theme, list))
+        .flatten()
+        .unwrap_or_default();
     let (list_area, preview_area) = split_preview(body, preview.len(), list);
 
     draw_prompt_line(frame, prompt_area, shell_prompt, finder, theme);
@@ -649,6 +653,7 @@ mod tests {
         status: Option<Status>,
         list: ListPosition,
         border: bool,
+        preview: bool,
         width: u16,
         height: u16,
         offset: usize,
@@ -670,6 +675,7 @@ mod tests {
                 status: None,
                 list: ListPosition::Below,
                 border: false,
+                preview: false,
                 width: 40,
                 height: 4,
                 offset: 0,
@@ -708,6 +714,13 @@ mod tests {
             }
         }
 
+        fn preview(self) -> Self {
+            Self {
+                preview: true,
+                ..self
+            }
+        }
+
         fn width(self, width: u16) -> Self {
             Self { width, ..self }
         }
@@ -726,6 +739,7 @@ mod tests {
             let config = Config {
                 list: self.list,
                 border: self.border,
+                preview: self.preview,
                 colors: self.theme,
                 ..Config::default()
             };
@@ -1220,7 +1234,7 @@ mod tests {
 
     #[test]
     fn previews_the_selected_command_when_its_row_is_cut() {
-        let buffer = Render::new(&finder(LONG)).height(8).run().buffer;
+        let buffer = Render::new(&finder(LONG)).preview().height(8).run().buffer;
         // Under three rows of the list
         let divider = FIRST_ROW + 3;
 
@@ -1237,16 +1251,24 @@ mod tests {
     fn previews_nothing_for_a_row_that_fits() {
         let mut finder = finder(LONG);
         finder.down();
-        let buffer = Render::new(&finder).height(8).run().buffer;
+        let buffer = Render::new(&finder).preview().height(8).run().buffer;
 
         assert!(!(FIRST_ROW..8).any(|y| text(&buffer, y).starts_with(DASH)));
     }
 
     #[test]
     fn previews_nothing_without_room_for_the_list() {
-        let buffer = Render::new(&finder(LONG)).height(6).run().buffer;
+        let buffer = Render::new(&finder(LONG)).preview().height(6).run().buffer;
 
         assert!(!(FIRST_ROW..6).any(|y| text(&buffer, y).starts_with(DASH)));
+    }
+
+    #[test]
+    fn previews_nothing_when_the_preview_is_off() {
+        let rendered = Render::new(&finder(LONG)).height(8).run();
+
+        assert!(!(FIRST_ROW..8).any(|y| text(&rendered.buffer, y).starts_with(DASH)));
+        assert_eq!(rendered.page, 6);
     }
 
     #[test]
@@ -1254,10 +1276,10 @@ mod tests {
         let mut finder = finder(LONG);
 
         // The prompt line, the two dividers and two lines of preview leave 3 rows
-        assert_eq!(Render::new(&finder).height(8).run().page, 3);
+        assert_eq!(Render::new(&finder).preview().height(8).run().page, 3);
 
         finder.down();
-        assert_eq!(Render::new(&finder).height(8).run().page, 6);
+        assert_eq!(Render::new(&finder).preview().height(8).run().page, 6);
     }
 
     /// The rows of a pane of 5 with the list above the prompt line: the list, the divider and the
@@ -1324,7 +1346,12 @@ mod tests {
 
     #[test]
     fn previews_the_selected_command_over_the_list_above_the_prompt_line() {
-        let buffer = Render::new(&finder(LONG)).above().height(8).run().buffer;
+        let buffer = Render::new(&finder(LONG))
+            .above()
+            .preview()
+            .height(8)
+            .run()
+            .buffer;
 
         assert_eq!(
             text(&buffer, 0).trim_end(),
@@ -1402,7 +1429,12 @@ mod tests {
 
     #[test]
     fn draws_the_border_past_the_preview() {
-        let below = Render::new(&finder(LONG)).border().height(9).run().buffer;
+        let below = Render::new(&finder(LONG))
+            .border()
+            .preview()
+            .height(9)
+            .run()
+            .buffer;
 
         assert_eq!(text(&below, 5), DASH.repeat(40));
         assert_eq!(text(&below, 7).trim_end(), "eight nine; ls");
@@ -1411,6 +1443,7 @@ mod tests {
         let above = Render::new(&finder(LONG))
             .above()
             .border()
+            .preview()
             .height(9)
             .run()
             .buffer;

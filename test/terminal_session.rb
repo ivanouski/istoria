@@ -6,8 +6,9 @@ require 'timeout'
 
 # Runs a command in a pseudo terminal and keeps a model of its screen, so tests can type keys
 # and read what a user would see. The model knows the escape sequences ratatui sends through
-# crossterm: cursor moves, clearing, styles (ignored, the raw output keeps them), and the cursor
-# position query, which it answers the way a terminal would.
+# crossterm: cursor moves, clearing, styles (ignored, the raw output keeps them), the cursor
+# position query, which it answers the way a terminal would, and synchronized updates, whose
+# frames it shows only once whole.
 class TerminalSession
   TIMEOUT = 5
 
@@ -20,6 +21,8 @@ class TerminalSession
     @row = start_row - 1
     @column = 0
     @raw = +''
+    @synchronized = false
+    @shown = snapshot
     @output = +''
     @mutex = Mutex.new
     @reader, @writer, @pid = PTY.spawn(env, 'sh', '-c', %(stty rows #{rows} cols #{columns} && exec "$0" "$@"),
@@ -61,11 +64,11 @@ class TerminalSession
 
   # The screen as lines with trailing spaces removed
   def screen
-    @mutex.synchronize { @grid.map { |row| row.join.rstrip } }
+    @mutex.synchronize { @shown[:screen] }
   end
 
   def cursor
-    @mutex.synchronize { [@row, @column] }
+    @mutex.synchronize { @shown[:cursor] }
   end
 
   # Everything the command wrote, escape sequences included
@@ -131,6 +134,13 @@ class TerminalSession
       @raw = match.post_match
       apply(match)
     end
+
+    @shown = snapshot unless @synchronized
+  end
+
+  # What a test sees, which a synchronized update changes only at its end
+  def snapshot
+    { screen: @grid.map { |row| row.join.rstrip }, cursor: [@row, @column] }
   end
 
   def apply(match)
@@ -163,8 +173,14 @@ class TerminalSession
     when 'K' then clear_line(numbers.fetch(0, 0))
     when '@' then insert_blanks([numbers.fetch(0, 1), 1].max)
     when 'P' then delete_chars([numbers.fetch(0, 1), 1].max)
+    when 'h', 'l' then synchronize(command == 'h') if params == '?2026'
     when 'n' then @writer.write("\e[#{@row + 1};#{@column + 1}R") if numbers == [6]
     end
+  end
+
+  def synchronize(started)
+    @synchronized = started
+    @shown = snapshot unless started
   end
 
   # Readline inserts and deletes in the middle of a line by shifting the rest of it

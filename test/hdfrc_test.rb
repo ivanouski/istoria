@@ -152,7 +152,7 @@ class HdfrcTest < HdfTestCase
     @session.press(:backspace, :backspace, :backspace, :backspace)
     wait_for_hdf_in_bash('sbx')
     @session.press(:escape)
-    @session.wait_for { |lines| lines.first == '$ sbx' }
+    wait_for_bash('$ sbx')
     @session.type('X')
 
     @session.wait_for { |lines| lines.first == '$ sbxX' }
@@ -165,7 +165,7 @@ class HdfrcTest < HdfTestCase
     @session.press(:up)
     wait_for_hdf_in_bash('sbx run')
     @session.press(:escape)
-    @session.wait_for { |lines| lines.first == '$ sbx run' }
+    wait_for_bash('$ sbx run')
     @session.type('X')
 
     @session.wait_for { |lines| lines.first == '$ sbx Xrun' }
@@ -180,7 +180,7 @@ class HdfrcTest < HdfTestCase
     @session.press(:backspace, :backspace, :backspace)
     wait_for_hdf_in_bash('sbx')
     @session.press(:escape)
-    @session.wait_for { |lines| lines.first == '$ sbx' }
+    wait_for_bash('$ sbx')
     @session.type('X')
 
     @session.wait_for { |lines| lines.first == '$ sbx X' }
@@ -263,7 +263,7 @@ class HdfrcTest < HdfTestCase
     @session.press(:down)
     delete
     @session.press(:escape)
-    @session.wait_for { |lines| lines.first == '$' }
+    wait_for_bash('$')
     @session.type("\rhistory\r")
     @session.wait_for { |lines| lines.first(5).last == '$' }
 

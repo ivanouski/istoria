@@ -102,9 +102,10 @@ It needs the history saved at each prompt, see [Bash history](#bash-history).
 `$XDG_CONFIG_HOME`). Keys left out keep their defaults:
 
 ```toml
-height = 12       # rows of the pane, the terminal's at most
-list   = "below"  # or "above" the prompt line, like fzf
-border = false    # a line on the far edge of the pane
+height  = 12      # rows of the pane, the terminal's at most
+list    = "below" # or "above" the prompt line, like fzf
+border  = false   # a line on the far edge of the pane
+preview = false   # the selected command in full when its row is cut
 [colors]
 prompt   = { fg = "blue", bold = true }
 count    = "dark-gray"     # matches/commands
@@ -125,6 +126,10 @@ it was on.
 `border = true` draws a line on the edge of the pane away from the prompt line, the last row below
 it or the first row above, in the `dim` color. It takes a row from the list, and is left out when
 the pane has no room for it and a row of the list.
+
+`preview = true` shows the selected command in full past the list, apart from it by a divider,
+when its row is cut: up to 3 lines, the last one ending in `…` when the command needs more. It
+takes rows from the list, and is left out when fewer than 3 rows of the list would be left.
 
 A color is a name (`yellow`, `light-blue`, `dark-gray`), `0` to `255` or `#rrggbb`, or a table of
 `fg`, `bg`, `bold`, `italic`, `underlined` and `reversed`.
