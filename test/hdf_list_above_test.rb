@@ -11,9 +11,9 @@ class HdfListAboveTest < HdfTestCase
   def test_lists_the_commands_up_from_the_prompt_line_on_the_last_row
     start('clau')
 
-    assert_equal '> clau', @session.screen[11]
-    assert_equal ['> clau', 'Claude', 'claude --resume', 'sbx run claude (3)', 'sbx build claude'], pane_above
-    assert_equal [11, '> clau'.size], @session.cursor
+    assert_equal '› clau', @session.screen[11]
+    assert_equal ['› clau', 'Claude', 'claude --resume', 'sbx run claude (3)', 'sbx build claude'], pane_above
+    assert_equal [11, '› clau'.size], @session.cursor
   end
 
   def test_up_moves_to_older_commands
@@ -25,8 +25,8 @@ class HdfListAboveTest < HdfTestCase
   def test_keeps_the_prompt_line_on_the_cursor_line_when_opened_at_the_bottom
     start('clau', start_row: 24)
 
-    assert_equal '> clau', @session.screen[23]
-    assert_equal ['> clau', 'Claude', 'claude --resume', 'sbx run claude (3)', 'sbx build claude'], pane_above
+    assert_equal '› clau', @session.screen[23]
+    assert_equal ['› clau', 'Claude', 'claude --resume', 'sbx run claude (3)', 'sbx build claude'], pane_above
   end
 
   def test_leaves_the_shell_prompt_on_the_first_row_when_closed
@@ -47,15 +47,15 @@ class HdfListAboveTest < HdfTestCase
     start('clau')
 
     assert_equal '─' * 80, @session.screen[0]
-    assert_equal ['> clau', 'Claude', 'claude --resume', 'sbx run claude (3)', 'sbx build claude'], pane_above
-    assert_equal '> clau', @session.screen[11]
+    assert_equal ['› clau', 'Claude', 'claude --resume', 'sbx run claude (3)', 'sbx build claude'], pane_above
+    assert_equal '› clau', @session.screen[11]
   end
 
   def test_fits_a_short_terminal
     start('', rows: 4)
 
     # The prompt line and two commands
-    assert_equal ['>', 'gg (2)', 'Claude'], pane_above
+    assert_equal ['›', 'gg (2)', 'Claude'], pane_above
     assert_picks(:up, :enter, 'Claude')
   end
 

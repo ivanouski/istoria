@@ -8,12 +8,12 @@ class HdfDeletingTest < HdfTestCase
 
     delete
     assert_match(/ deleted sbx run codex ──\z/, @session.screen[DIVIDER_ROW])
-    assert_equal ['> sbx run', 'sbx run claude (3)'], pane
+    assert_equal ['› sbx run', 'sbx run claude (3)'], pane
     assert_equal HISTORY.sub("sbx run codex \n", ''), File.read(@history)
 
     delete
     assert_match(/ deleted sbx run claude ──\z/, @session.screen[DIVIDER_ROW])
-    assert_equal ['> sbx run', 'no matches'], pane
+    assert_equal ['› sbx run', 'no matches'], pane
     assert_equal HISTORY.lines.grep_v(/\Asbx run/).join, File.read(@history)
   end
 
@@ -23,7 +23,7 @@ class HdfDeletingTest < HdfTestCase
     @session.press(:down)
     delete
 
-    assert_equal ['> clau', 'Claude', 'sbx run claude (3)', 'sbx build claude'], pane
+    assert_equal ['› clau', 'Claude', 'sbx run claude (3)', 'sbx build claude'], pane
     assert_picks(:enter, 'sbx run claude')
   end
 
@@ -43,7 +43,7 @@ class HdfDeletingTest < HdfTestCase
     @session.type('d')
     @session.wait_for_text('3/14')
 
-    assert_equal '> claud', @session.screen.first
+    assert_equal '› claud', @session.screen.first
     assert_match(%r{ 3/14 ──\z}, @session.screen[DIVIDER_ROW])
   end
 

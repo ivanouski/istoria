@@ -36,7 +36,7 @@ class HdfArgumentsTest < HdfTestCase
     File.write(@history, "sbx -V\nls\n")
     start('--', '-V')
 
-    assert_equal ['> -V', 'sbx -V'], pane
+    assert_equal ['› -V', 'sbx -V'], pane
   end
 
   def test_rejects_unknown_option
@@ -50,13 +50,13 @@ class HdfArgumentsTest < HdfTestCase
     File.write(@history, "ls\nls -la\n")
     start('--', '-la')
 
-    assert_equal ['> -la', 'ls -la'], pane
+    assert_equal ['› -la', 'ls -la'], pane
   end
 
   def test_joins_words_into_one_query
     start('sbx', 'run')
 
-    assert_equal ['> sbx run', 'sbx run codex', 'sbx run claude (3)'], pane
+    assert_equal ['› sbx run', 'sbx run codex', 'sbx run claude (3)'], pane
   end
 
   def test_fails_on_a_missing_history_file

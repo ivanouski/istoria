@@ -43,7 +43,7 @@ class HdfConfigTest < HdfTestCase
     write_config("border = true\n")
     start('clau')
 
-    assert_equal ['> clau', 'Claude', 'claude --resume', 'sbx run claude (3)', 'sbx build claude'], pane
+    assert_equal ['› clau', 'Claude', 'claude --resume', 'sbx run claude (3)', 'sbx build claude'], pane
     assert_equal '─' * 80, @session.screen[11]
   end
 

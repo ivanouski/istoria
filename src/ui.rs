@@ -177,7 +177,7 @@ fn list_offset(offset: usize, finder: &Finder, height: usize) -> usize {
     }
 }
 
-/// The shell prompt when it shows anything and leaves the query room, None for >
+/// The shell prompt when it shows anything and leaves the query room, None for ›
 pub fn shell_prompt<'a>(prompt: Option<&'a Line<'a>>, width: u16) -> Option<&'a Line<'a>> {
     prompt.filter(|prompt| prompt.width() > 0 && prompt.width() * 5 <= usize::from(width) * 3)
 }
@@ -198,7 +198,7 @@ fn draw_prompt_line(
 ) {
     let mut line = shell_prompt
         .cloned()
-        .unwrap_or_else(|| Line::from(Span::styled("> ", theme.prompt)));
+        .unwrap_or_else(|| Line::from(Span::styled("› ", theme.prompt)));
     let prompt_width = line.width();
     let room = usize::from(area.width).saturating_sub(prompt_width);
     let (query, column) = scroll(finder.query(), finder.cursor(), room);
@@ -897,7 +897,7 @@ mod tests {
     fn keeps_the_prompt_line_in_a_pane_of_one_row() {
         let Rendered { buffer, cursor, .. } = Render::new(&finder(HISTORY)).height(1).run();
 
-        assert_eq!(text(&buffer, 0).trim_end(), "> ls");
+        assert_eq!(text(&buffer, 0).trim_end(), "› ls");
         assert_eq!(cursor, Position::new(4, 0));
     }
 
@@ -906,7 +906,7 @@ mod tests {
         let finder = query_finder("0123456789abcdefghij", false);
         let Rendered { buffer, cursor, .. } = Render::new(&finder).width(20).run();
 
-        assert_eq!(text(&buffer, 0), "> …456789abcdefghij ");
+        assert_eq!(text(&buffer, 0), "› …456789abcdefghij ");
         assert_eq!(cursor, Position::new(19, 0));
     }
 
@@ -915,7 +915,7 @@ mod tests {
         let finder = query_finder("0123456789abcdefghij", true);
         let Rendered { buffer, cursor, .. } = Render::new(&finder).width(20).run();
 
-        assert_eq!(text(&buffer, 0), "> 0123456789abcdefgh");
+        assert_eq!(text(&buffer, 0), "› 0123456789abcdefgh");
         assert_eq!(cursor, Position::new(2, 0));
     }
 
@@ -933,7 +933,7 @@ mod tests {
         let finder = query_finder("日本語のコマンドを検索する", false);
         let Rendered { buffer, cursor, .. } = Render::new(&finder).width(20).run();
 
-        assert_eq!(text(&buffer, 0), "> …マ ン ド を 検 索 す る  ");
+        assert_eq!(text(&buffer, 0), "› …マ ン ド を 検 索 す る  ");
         assert_eq!(cursor, Position::new(19, 0));
     }
 
@@ -941,7 +941,7 @@ mod tests {
     fn shows_the_count_in_the_divider_under_the_prompt_line() {
         let buffer = Render::new(&finder(HISTORY)).run().buffer;
 
-        assert_eq!(text(&buffer, 0).trim_end(), "> ls");
+        assert_eq!(text(&buffer, 0).trim_end(), "› ls");
         assert_eq!(
             text(&buffer, DIVIDER_ROW),
             format!("{} 2/2 ──", DASH.repeat(33))
@@ -975,7 +975,7 @@ mod tests {
         let status = Status::Deleted("deleted git commit".to_string());
         let Rendered { buffer, cursor, .. } = Render::new(&finder).width(20).status(status).run();
 
-        assert_eq!(text(&buffer, 0).trim_end(), "> 0123456789");
+        assert_eq!(text(&buffer, 0).trim_end(), "› 0123456789");
         assert_eq!(text(&buffer, DIVIDER_ROW), " deleted git com… ──");
         assert_eq!(cursor, Position::new(12, 0));
     }
@@ -1013,7 +1013,7 @@ mod tests {
         let prompt = "\x01\x1b]0;title\x07\x02";
         let buffer = Render::new(&finder("ls\n")).prompt(prompt).run().buffer;
 
-        assert!(text(&buffer, 0).starts_with("> ls "));
+        assert!(text(&buffer, 0).starts_with("› ls "));
         assert_eq!(first_command_column(&buffer), 2);
     }
 
@@ -1069,7 +1069,7 @@ mod tests {
 
         assert!(text(&kept, 0).starts_with(&format!("{kept_prompt}ls ")));
         assert_eq!(first_command_column(&kept), 24);
-        assert!(text(&wide, 0).starts_with("> ls "));
+        assert!(text(&wide, 0).starts_with("› ls "));
         assert_eq!(first_command_column(&wide), INDENT);
     }
 
@@ -1281,7 +1281,7 @@ mod tests {
     fn lists_the_matches_up_from_the_divider_above_the_prompt_line() {
         let Rendered { buffer, cursor, .. } = Render::new(&finder(HISTORY)).above().height(5).run();
 
-        assert_eq!(text(&buffer, ABOVE_PROMPT_ROW).trim_end(), "> ls");
+        assert_eq!(text(&buffer, ABOVE_PROMPT_ROW).trim_end(), "› ls");
         assert_eq!(cursor, Position::new(4, ABOVE_PROMPT_ROW));
         assert!(text(&buffer, ABOVE_DIVIDER_ROW).ends_with(" 2/2 ──"));
         // The most recent command is selected, next to the divider
@@ -1341,14 +1341,14 @@ mod tests {
         // Three rows of the list, the selected command next to the divider
         assert!(text(&buffer, 5).ends_with("ls (2)"));
         assert!(text(&buffer, 6).ends_with(" 2/2 ──"));
-        assert_eq!(text(&buffer, 7).trim_end(), "> ls");
+        assert_eq!(text(&buffer, 7).trim_end(), "› ls");
     }
 
     #[test]
     fn keeps_the_prompt_line_in_a_pane_of_one_row_above_the_list() {
         let Rendered { buffer, cursor, .. } = Render::new(&finder(HISTORY)).above().height(1).run();
 
-        assert_eq!(text(&buffer, 0).trim_end(), "> ls");
+        assert_eq!(text(&buffer, 0).trim_end(), "› ls");
         assert_eq!(cursor, Position::new(4, 0));
     }
 
@@ -1357,7 +1357,7 @@ mod tests {
         let buffer = Render::new(&finder(HISTORY)).above().height(2).run().buffer;
 
         assert!(text(&buffer, 0).ends_with(" 2/2 ──"));
-        assert_eq!(text(&buffer, 1).trim_end(), "> ls");
+        assert_eq!(text(&buffer, 1).trim_end(), "› ls");
     }
 
     #[test]
@@ -1402,7 +1402,7 @@ mod tests {
         assert!(text(buffer, 2).trim_end().ends_with("  ls -la"));
         assert!(text(buffer, 3).trim_end().ends_with("  ls"));
         assert!(text(buffer, 4).ends_with(" 2/2 ──"));
-        assert_eq!(text(buffer, 5).trim_end(), "> ls");
+        assert_eq!(text(buffer, 5).trim_end(), "› ls");
         assert_eq!(rendered.page, 3);
     }
 

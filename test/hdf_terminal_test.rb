@@ -6,7 +6,7 @@ class HdfTerminalTest < HdfTestCase
   def test_opens_on_the_cursor_line_and_clears_the_pane
     start('clau', start_row: 5)
 
-    assert_equal '> clau', @session.screen[4].split.first(2).join(' ')
+    assert_equal '› clau', @session.screen[4].split.first(2).join(' ')
 
     @session.press(:enter)
     @session.wait
@@ -18,7 +18,7 @@ class HdfTerminalTest < HdfTestCase
     start(command: ['sh', '-c', %(printf 'PROMPT$ '; exec "$0" "$@"), HDF, 'clau'])
 
     assert_equal 'PROMPT$', @session.screen[0]
-    assert_equal ['> clau', 'Claude', 'claude --resume', 'sbx run claude (3)', 'sbx build claude'], pane
+    assert_equal ['› clau', 'Claude', 'claude --resume', 'sbx run claude (3)', 'sbx build claude'], pane
 
     @session.press(:enter)
     @session.wait
@@ -49,13 +49,13 @@ class HdfTerminalTest < HdfTestCase
 
     Process.kill('KILL', shell)
 
-    @session.wait_for { |lines| lines.none? { |line| line.start_with?('> ') } }
+    @session.wait_for { |lines| lines.none? { |line| line.start_with?('› ') } }
   end
 
   def test_scrolls_the_screen_when_opened_at_the_bottom
     start('clau', start_row: 24)
 
-    assert_equal ['> clau', 'Claude', 'claude --resume', 'sbx run claude (3)', 'sbx build claude'], pane
+    assert_equal ['› clau', 'Claude', 'claude --resume', 'sbx run claude (3)', 'sbx build claude'], pane
     assert_picks(:down, :enter, 'claude --resume')
   end
 

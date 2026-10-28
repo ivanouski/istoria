@@ -116,7 +116,7 @@ class HdfrcTest < HdfTestCase
 
     @session.type('pick')
     @session.press(:up)
-    @session.wait_for { |lines| lines.first == '> pick' && lines[DIVIDER_ROW].end_with?(' 1/2 ──') }
+    @session.wait_for { |lines| lines.first == '› pick' && lines[DIVIDER_ROW].end_with?(' 1/2 ──') }
 
     assert_equal 1, File.readlines(expansions).size
   end

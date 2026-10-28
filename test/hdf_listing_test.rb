@@ -9,13 +9,13 @@ class HdfListingTest < HdfTestCase
   def test_lists_matches_most_recent_first
     start('clau')
 
-    assert_equal ['> clau', 'Claude', 'claude --resume', 'sbx run claude (3)', 'sbx build claude'], pane
+    assert_equal ['› clau', 'Claude', 'claude --resume', 'sbx run claude (3)', 'sbx build claude'], pane
   end
 
   def test_shows_the_match_count
     start('clau')
 
-    assert_equal '> clau', @session.screen.first
+    assert_equal '› clau', @session.screen.first
     assert_match(%r{\A─+ 4/15 ──\z}, @session.screen[DIVIDER_ROW])
   end
 
@@ -29,15 +29,15 @@ class HdfListingTest < HdfTestCase
   def test_matching_ignores_case
     start('CLAUDE --')
 
-    assert_equal ['> CLAUDE --', 'claude --resume'], pane
+    assert_equal ['› CLAUDE --', 'claude --resume'], pane
   end
 
   def test_typing_narrows_the_list
     start('clau')
     @session.type('de --')
-    @session.wait_for_text('> claude --')
+    @session.wait_for_text('› claude --')
 
-    assert_equal ['> claude --', 'claude --resume'], pane
+    assert_equal ['› claude --', 'claude --resume'], pane
   end
 
   def test_backspace_and_ctrl_u_widen_the_list
@@ -45,10 +45,10 @@ class HdfListingTest < HdfTestCase
     @session.press(:backspace, :backspace)
     @session.wait_for_text('sbx -V')
 
-    assert_equal ['> sbx', 'sbx run codex', 'sbx run claude (3)', 'sbx build claude', 'sbx -V'], pane
+    assert_equal ['› sbx', 'sbx run codex', 'sbx run claude (3)', 'sbx build claude', 'sbx -V'], pane
 
     @session.press(:ctrl_u)
-    @session.wait_for { |lines| lines.first == '>' }
+    @session.wait_for { |lines| lines.first == '›' }
 
     assert_equal 10, pane.size - 1
   end
@@ -57,15 +57,15 @@ class HdfListingTest < HdfTestCase
     start('sbx rn')
     @session.press(:left)
     @session.type('u')
-    @session.wait_for_text('> sbx run')
+    @session.wait_for_text('› sbx run')
 
-    assert_equal ['> sbx run', 'sbx run codex', 'sbx run claude (3)'], pane
-    @session.wait_for { @session.cursor == [0, '> sbx ru'.size] }
+    assert_equal ['› sbx run', 'sbx run codex', 'sbx run claude (3)'], pane
+    @session.wait_for { @session.cursor == [0, '› sbx ru'.size] }
 
     @session.press(:home, :delete, :end)
     @session.type('!')
 
-    @session.wait_for_text('> bx run!')
+    @session.wait_for_text('› bx run!')
   end
 
   def test_scrolls_a_long_query_to_the_cursor
@@ -74,7 +74,7 @@ class HdfListingTest < HdfTestCase
     start(query, columns: 40)
     @session.type(' web')
 
-    @session.wait_for { |lines| lines.first == "> …#{"#{query} web"[-36..]}" }
+    @session.wait_for { |lines| lines.first == "› …#{"#{query} web"[-36..]}" }
     @session.wait_for { @session.cursor == [0, 39] }
   end
 
@@ -103,29 +103,29 @@ class HdfListingTest < HdfTestCase
 
     @session.type("\ex")
     @session.type('d')
-    @session.wait_for { |lines| lines.first == '> claud' }
+    @session.wait_for { |lines| lines.first == '› claud' }
 
-    assert_equal ['> claud', 'Claude', 'claude --resume', 'sbx run claude (3)', 'sbx build claude'], pane
+    assert_equal ['› claud', 'Claude', 'claude --resume', 'sbx run claude (3)', 'sbx build claude'], pane
   end
 
   def test_says_so_without_matches
     start('nothing like it')
 
-    assert_equal '> nothing like it', @session.screen.first
+    assert_equal '› nothing like it', @session.screen.first
     assert_match(%r{ 0/15 ──\z}, @session.screen[DIVIDER_ROW])
-    assert_equal ['> nothing like it', 'no matches'], pane
+    assert_equal ['› nothing like it', 'no matches'], pane
   end
 
   def test_matches_stars_literally
     File.write(@history, "claude\nls *.rb\n")
     start('*aude')
 
-    assert_equal ['> *aude', 'no matches'], pane
+    assert_equal ['› *aude', 'no matches'], pane
 
     @session.press(:ctrl_u)
     @session.type('*.rb')
-    @session.wait_for { |lines| lines.first == '> *.rb' }
+    @session.wait_for { |lines| lines.first == '› *.rb' }
 
-    assert_equal ['> *.rb', 'ls *.rb'], pane
+    assert_equal ['› *.rb', 'ls *.rb'], pane
   end
 end

@@ -17,7 +17,7 @@ class HdfHistoryFileTest < HdfTestCase
     File.write(@history, "#1700000000\nls\n#1700000001\nfor x in a b\ndo echo $x\ndone\n#1700000002\npwd\n")
     start('for x')
 
-    assert_equal ['> for x', '2023-11-14 22:13  for x in a b do echo $x done'], pane
+    assert_equal ['› for x', '2023-11-14 22:13  for x in a b do echo $x done'], pane
 
     delete
 
@@ -28,7 +28,7 @@ class HdfHistoryFileTest < HdfTestCase
     File.write(@history, "ls\nsbx run claude\n#1700000000\npwd\n#1700000001\nsbx run claude\n")
     start
 
-    assert_equal ['>', '2023-11-14 22:13  sbx run claude (2)', '2023-11-14 22:13  pwd', 'ls'], pane
+    assert_equal ['›', '2023-11-14 22:13  sbx run claude (2)', '2023-11-14 22:13  pwd', 'ls'], pane
 
     delete
 
@@ -53,7 +53,7 @@ class HdfHistoryFileTest < HdfTestCase
     @session.wait_for_text('cannot delete')
 
     assert_includes @session.screen[DIVIDER_ROW], 'cannot delete: history file was changed by another process'
-    assert_equal ['>', 'rewritten'], pane
+    assert_equal ['›', 'rewritten'], pane
     assert_equal "rewritten\n", File.read(@history)
   end
 
