@@ -59,9 +59,10 @@ class HdfTestCase < Minitest::Test
     ['bash', '--norc', '--noprofile', '-i', '-c', ". #{HDFRC}; #{commands}"]
   end
 
-  def start_bash(path: HDF_DIR, ps1: '$ ')
+  def start_bash(path: HDF_DIR, ps1: '$ ', bashrc: '')
     rc = File.join(@tmp_dir, 'bashrc')
     File.write(rc, <<~BASH)
+      #{bashrc}
       PS1='#{ps1}'
       HISTFILE=#{@history}
       PROMPT_COMMAND='history -a; history -c; history -r'
@@ -69,7 +70,7 @@ class HdfTestCase < Minitest::Test
     BASH
     env = {
       'PATH' => "#{path}:#{ENV.fetch('PATH')}", 'HOME' => @tmp_dir, 'XDG_CONFIG_HOME' => nil, 'INPUTRC' => File::NULL,
-      'TZ' => 'UTC',
+      'TZ' => 'UTC', 'HDF_SHELL_PROMPT' => nil,
     }
     @session = TerminalSession.new(['bash', '--noprofile', '--rcfile', rc, '-i'], env:)
     @session.wait_for { |lines| !lines.first.empty? }

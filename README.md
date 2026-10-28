@@ -61,7 +61,9 @@ the shell's history.
 
 Each word of the query matches anywhere in a command, in any order, ignoring case: `push git`
 finds `git -C api push`. With bash 4.4 or later hdf shows your prompt in place of `>`, unless it
-takes more than 60% of the width.
+takes more than 60% of the width. Bash expands the prompt each time hdf opens, running any `$(...)`
+in `PS1` again, which a git status in a big repo makes slow. `HDF_SHELL_PROMPT=false` in
+`~/.bashrc` keeps `>`.
 
 | Key                           | Action                                   |
 | ----------------------------- | ---------------------------------------- |

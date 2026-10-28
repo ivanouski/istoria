@@ -108,6 +108,29 @@ class HdfrcTest < HdfTestCase
     assert_equal "#{' ' * 12}2023-11-14 22:13  echo picked", @session.screen[FIRST_ROW]
   end
 
+  def test_shows_the_simple_prompt_without_expanding_the_shell_prompt_when_turned_off
+    File.write(@history, "echo first\necho picked\n")
+    # Bash expands PS1 once for its own prompt, every expansion adds a line
+    expansions = File.join(@tmp_dir, 'expansions')
+    start_bash(ps1: "$(echo >> #{expansions})box\\$ ", bashrc: 'HDF_SHELL_PROMPT=false')
+
+    @session.type('pick')
+    @session.press(:up)
+    @session.wait_for { |lines| lines.first == '> pick' && lines[DIVIDER_ROW].end_with?(' 1/2 ──') }
+
+    assert_equal 1, File.readlines(expansions).size
+  end
+
+  def test_up_opens_hdf_with_nounset_on
+    File.write(@history, "echo first\nls\n")
+    start_bash(bashrc: 'set -u')
+
+    @session.press(:up)
+    wait_for_hdf_in_bash
+
+    assert_equal ['$', 'ls', 'echo first'], pane
+  end
+
   def test_ctrl_p_and_ctrl_n_browse_history_as_usual
     File.write(@history, "echo first\necho second\n")
     start_bash
