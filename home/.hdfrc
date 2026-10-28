@@ -12,10 +12,15 @@ __hdf_search() {
   local line status
   local -a options=(--print-query)
 
-  # hdf shows the prompt bash just cleared, ${PS1@P} needs bash 4.4. HDF_SHELL_PROMPT=false skips
-  # it for ›, as PS1 runs its $(...) again, slow for a git status in a big repo.
-  if [[ ${HDF_SHELL_PROMPT-} != false ]] && (( BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] >= 404 )); then
-    options+=(--prompt "${PS1@P}")
+  # hdf shows the prompt bash just cleared, ${PS1@P} needs bash 4.4. HDF_PROMPT, written like PS1,
+  # shows in its place. HDF_SHELL_PROMPT=false skips PS1 for ›, as PS1 runs its $(...) again, slow
+  # for a git status in a big repo.
+  if (( BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] >= 404 )); then
+    if [[ -n ${HDF_PROMPT-} ]]; then
+      options+=(--prompt "${HDF_PROMPT@P}")
+    elif [[ ${HDF_SHELL_PROMPT-} != false ]]; then
+      options+=(--prompt "${PS1@P}")
+    fi
   fi
 
   history -a

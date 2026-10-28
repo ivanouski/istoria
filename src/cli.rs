@@ -12,7 +12,7 @@ query matches anywhere in a command, in any order, ignoring case.
 
 Options:
   --print-query      on Esc, print the query and exit with 3
-  --prompt TEXT      show TEXT, the shell prompt as bash prints it, instead of >
+  --prompt TEXT      show TEXT, the shell prompt as bash prints it, instead of ›
   --delete-last [N]  delete the last N commands from history, 1 by default
   --init-config      write the default config, unless it exists
   -h, --help         print this help

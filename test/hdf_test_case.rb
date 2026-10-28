@@ -70,7 +70,7 @@ class HdfTestCase < Minitest::Test
     BASH
     env = {
       'PATH' => "#{path}:#{ENV.fetch('PATH')}", 'HOME' => @tmp_dir, 'XDG_CONFIG_HOME' => nil, 'INPUTRC' => File::NULL,
-      'TZ' => 'UTC', 'HDF_SHELL_PROMPT' => nil,
+      'TZ' => 'UTC', 'HDF_SHELL_PROMPT' => nil, 'HDF_PROMPT' => nil,
     }
     @session = TerminalSession.new(['bash', '--noprofile', '--rcfile', rc, '-i'], env:)
     @session.wait_for { |lines| !lines.first.empty? }

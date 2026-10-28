@@ -121,6 +121,19 @@ class HdfrcTest < HdfTestCase
     assert_equal 1, File.readlines(expansions).size
   end
 
+  def test_shows_hdf_prompt_in_its_colors_without_expanding_the_shell_prompt
+    File.write(@history, "echo first\necho picked\n")
+    expansions = File.join(@tmp_dir, 'expansions')
+    start_bash(ps1: "$(echo >> #{expansions})box\\$ ", bashrc: %q(HDF_PROMPT='\[\e[32m\]mon›\[\e[0m\] '))
+
+    @session.type('pick')
+    @session.press(:up)
+    @session.wait_for { |lines| lines.first == 'mon› pick' && lines[DIVIDER_ROW].end_with?(' 1/2 ──') }
+
+    assert_color '38;5;2'
+    assert_equal 1, File.readlines(expansions).size
+  end
+
   def test_up_opens_hdf_with_nounset_on
     File.write(@history, "echo first\nls\n")
     start_bash(bashrc: 'set -u')
