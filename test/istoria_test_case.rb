@@ -3,11 +3,11 @@
 require_relative 'test_helper'
 require_relative 'terminal_session'
 
-class HdfTestCase < Minitest::Test
+class IstoriaTestCase < Minitest::Test
   CRATE = ROOT
-  HDF_DIR = File.join(CRATE, 'target', 'debug')
-  HDF = File.join(HDF_DIR, 'hdf')
-  HDFRC = File.join(ROOT, 'home', '.hdfrc')
+  ISTORIA_DIR = File.join(CRATE, 'target', 'debug')
+  ISTORIA = File.join(ISTORIA_DIR, 'istoria')
+  ISTORIARC = File.join(ROOT, 'home', '.istoriarc')
 
   HISTORY = [
     'cd src/sndbx/',
@@ -49,39 +49,39 @@ class HdfTestCase < Minitest::Test
 
   private
 
-  def start(*query, command: [HDF, *query], history: @history, env: {}, **terminal)
+  def start(*query, command: [ISTORIA, *query], history: @history, env: {}, **terminal)
     env = { 'HISTFILE' => history, 'TZ' => 'UTC', 'XDG_CONFIG_HOME' => config_home }.merge(env)
     @session = TerminalSession.new(command, env:, **terminal)
     wait_for_pane
   end
 
-  def bash_with_hdfrc(commands)
-    ['bash', '--norc', '--noprofile', '-i', '-c', ". #{HDFRC}; #{commands}"]
+  def bash_with_istoriarc(commands)
+    ['bash', '--norc', '--noprofile', '-i', '-c', ". #{ISTORIARC}; #{commands}"]
   end
 
-  def start_bash(path: HDF_DIR, ps1: '$ ', bashrc: '')
+  def start_bash(path: ISTORIA_DIR, ps1: '$ ', bashrc: '')
     rc = File.join(@tmp_dir, 'bashrc')
     File.write(rc, <<~BASH)
       #{bashrc}
       PS1='#{ps1}'
       HISTFILE=#{@history}
       PROMPT_COMMAND='history -a; history -c; history -r'
-      . #{HDFRC}
+      . #{ISTORIARC}
     BASH
     env = {
       'PATH' => "#{path}:#{ENV.fetch('PATH')}", 'HOME' => @tmp_dir, 'XDG_CONFIG_HOME' => nil, 'INPUTRC' => File::NULL,
-      'TZ' => 'UTC', 'HDF_SHELL_PROMPT' => nil, 'HDF_PROMPT' => nil,
+      'TZ' => 'UTC', 'ISTORIA_SHELL_PROMPT' => nil, 'ISTORIA_PROMPT' => nil,
     }
     @session = TerminalSession.new(['bash', '--noprofile', '--rcfile', rc, '-i'], env:)
     @session.wait_for { |lines| !lines.first.empty? }
   end
 
-  def wait_for_hdf_in_bash(query = '')
+  def wait_for_istoria_in_bash(query = '')
     prompt = "$ #{query}".rstrip
     @session.wait_for { |lines| lines.each_cons(2).any? { |line, below| line == prompt && below.match?(PANE_DIVIDER) } }
   end
 
-  # hdf draws bash's prompt line too, only its pane going tells them apart
+  # istoria draws bash's prompt line too, only its pane going tells them apart
   def wait_for_bash(line)
     @session.wait_for { |lines| lines.first == line && lines.none? { |below| below.match?(PANE_DIVIDER) } }
   end
@@ -100,7 +100,7 @@ class HdfTestCase < Minitest::Test
 
   def picked_output(*keys)
     output = File.join(@tmp_dir, 'output')
-    start(command: ['sh', '-c', %("$0" > "#{output}"), HDF])
+    start(command: ['sh', '-c', %("$0" > "#{output}"), ISTORIA])
     @session.press(*keys)
     @session.wait
     @session = nil
@@ -135,16 +135,16 @@ class HdfTestCase < Minitest::Test
     assert_equal output, @session.screen.join("\n").strip
   end
 
-  def run_hdf(*, env: {})
-    Open3.capture3({ 'HISTFILE' => @history, 'XDG_CONFIG_HOME' => config_home }.merge(env), HDF, *)
+  def run_istoria(*, env: {})
+    Open3.capture3({ 'HISTFILE' => @history, 'XDG_CONFIG_HOME' => config_home }.merge(env), ISTORIA, *)
   end
 
-  # Runs hdf with stdout on a pipe nobody reads, so every write fails with EPIPE
-  def run_hdf_into_a_closed_pipe(*)
+  # Runs istoria with stdout on a pipe nobody reads, so every write fails with EPIPE
+  def run_istoria_into_a_closed_pipe(*)
     out_reader, out_writer = IO.pipe
     out_reader.close
     err_reader, err_writer = IO.pipe
-    pid = Process.spawn({ 'HISTFILE' => @history, 'XDG_CONFIG_HOME' => config_home }, HDF, *,
+    pid = Process.spawn({ 'HISTFILE' => @history, 'XDG_CONFIG_HOME' => config_home }, ISTORIA, *,
                         out: out_writer, err: err_writer)
     [out_writer, err_writer].each(&:close)
     stderr = err_reader.read
@@ -170,7 +170,7 @@ class HdfTestCase < Minitest::Test
   end
 
   def write_config(text, home: config_home)
-    FileUtils.mkdir_p(File.join(home, 'hdf'))
-    File.write(File.join(home, 'hdf', 'config.toml'), text)
+    FileUtils.mkdir_p(File.join(home, 'istoria'))
+    File.write(File.join(home, 'istoria', 'config.toml'), text)
   end
 end

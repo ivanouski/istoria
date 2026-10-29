@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-require_relative 'hdf_test_case'
+require_relative 'istoria_test_case'
 
-class HdfDeletingTest < HdfTestCase
+class IstoriaDeletingTest < IstoriaTestCase
   def test_ctrl_d_deletes_every_occurrence_and_stays_open
     start('sbx run')
 

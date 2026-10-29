@@ -5,7 +5,7 @@ use std::ffi::OsString;
 use crate::config;
 
 const USAGE: &str = "\
-Usage: hdf [OPTIONS] [QUERY]
+Usage: istoria [OPTIONS] [QUERY]
 
 Search bash history in $HISTFILE and print the chosen command. Each word of the
 query matches anywhere in a command, in any order, ignoring case.
@@ -38,7 +38,7 @@ Keys:
 Without matches, Enter and Tab quit like Esc. With the list above the prompt
 line, Up, Ctrl-P and PgUp move to older commands.
 
-Config: $XDG_CONFIG_HOME/hdf/config.toml, defaults:
+Config: $XDG_CONFIG_HOME/istoria/config.toml, defaults:
 
 {defaults}
 
@@ -134,7 +134,7 @@ fn parse_count(count: &str) -> Result<usize, String> {
 }
 
 fn usage_error(message: &str) -> String {
-    format!("{message}\nTry 'hdf --help' for usage.")
+    format!("{message}\nTry 'istoria --help' for usage.")
 }
 
 /// The usage with the default config, indented
@@ -249,7 +249,7 @@ mod tests {
         let error = parse(&["-x"]).unwrap_err();
 
         assert!(error.starts_with("invalid option: -x\n"));
-        assert!(error.ends_with("Try 'hdf --help' for usage."));
+        assert!(error.ends_with("Try 'istoria --help' for usage."));
     }
 
     #[test]

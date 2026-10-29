@@ -1,4 +1,4 @@
-# hdf
+# istoria
 
 A fuzzy finder for bash history. Pick a command to put it on the prompt line, or delete it from
 the history, every occurrence of it.
@@ -11,29 +11,29 @@ Build and install the binary into `~/.cargo/bin`:
 cargo install --path .
 ```
 
-Copy `home/.hdfrc` to your home and load the key bindings from `~/.bashrc`, they need bash 4.0 or
-later:
+Copy `home/.istoriarc` to your home and load the key bindings from `~/.bashrc`, they need bash 4.0
+or later:
 
 ```bash
-[[ -f ~/.hdfrc ]] && . ~/.hdfrc
+[[ -f ~/.istoriarc ]] && . ~/.istoriarc
 ```
 
 Optionally, install the completion of the options, which bash-completion loads on demand (without
 it, source the file in `~/.bashrc`):
 
 ```bash
-cp completions/_hdf ~/.local/share/bash-completion/completions/hdf
+cp completions/_istoria ~/.local/share/bash-completion/completions/istoria
 ```
 
 ## Bash history
 
-hdf reads and edits the history file, `$HISTFILE`. Deleting needs two settings in `~/.bashrc`:
+istoria reads and edits the history file, `$HISTFILE`. Deleting needs two settings in `~/.bashrc`:
 
 ```bash
 # Save each command at the prompt and reload the file
 PROMPT_COMMAND="history -a; history -c; history -r${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
-# Keep hdf --delete-last out of the history, add a pattern for an alias of it too
-HISTIGNORE="${HISTIGNORE:+$HISTIGNORE:}hdf --delete-last*"
+# Keep istoria --delete-last out of the history, add a pattern for an alias of it too
+HISTIGNORE="${HISTIGNORE:+$HISTIGNORE:}istoria --delete-last*"
 ```
 
 Bash saves commands to the file only on exit. `history -a` at each prompt saves them as they run, so
@@ -41,12 +41,12 @@ Bash saves commands to the file only on exit. `history -a` at each prompt saves 
 Reloading with `history -c; history -r` drops deleted commands from the shell's copy, which Ctrl-P,
 Ctrl-N, `!!` and `history` use.
 
-Optionally, for the rest of hdf:
+Optionally, for the rest of istoria:
 
 ```bash
 # Append to the file on exit instead of overwriting what other shells saved
 shopt -s histappend
-# Save when each command ran, hdf shows it. Commands saved before have no time
+# Save when each command ran, istoria shows it. Commands saved before have no time
 HISTTIMEFORMAT='%F %T '
 # Keep more than the 500 commands bash keeps by default
 HISTSIZE=10000
@@ -55,18 +55,18 @@ HISTFILESIZE=10000
 
 ## Usage
 
-Up or Down opens hdf with the typed text as the query. Enter runs the chosen command, Tab puts it
-on the prompt line to edit, Esc puts back the edited query. Ctrl-P and Ctrl-N still step through
+Up or Down opens istoria with the typed text as the query. Enter runs the chosen command, Tab puts
+it on the prompt line to edit, Esc puts back the edited query. Ctrl-P and Ctrl-N still step through
 the shell's history.
 
 Each word of the query matches anywhere in a command, in any order, ignoring case: `push git`
-finds `git -C api push`. With bash 4.4 or later hdf shows your prompt in place of `›`, unless it
-takes more than 60% of the width. Bash expands the prompt each time hdf opens, running any `$(...)`
-in `PS1` again, which a git status in a big repo makes slow. `HDF_SHELL_PROMPT=false` in
-`~/.bashrc` keeps `›`. `HDF_PROMPT`, written like `PS1`, shows in place of either:
+finds `git -C api push`. With bash 4.4 or later istoria shows your prompt in place of `›`, unless
+it takes more than 60% of the width. Bash expands the prompt each time istoria opens, running any
+`$(...)` in `PS1` again, which a git status in a big repo makes slow. `ISTORIA_SHELL_PROMPT=false`
+in `~/.bashrc` keeps `›`. `ISTORIA_PROMPT`, written like `PS1`, shows in place of either:
 
 ```bash
-HDF_PROMPT='\[\e[35m\]mon›\[\e[0m\] '
+ISTORIA_PROMPT='\[\e[35m\]mon›\[\e[0m\] '
 ```
 
 | Key                           | Action                                   |
@@ -85,14 +85,14 @@ HDF_PROMPT='\[\e[35m\]mon›\[\e[0m\] '
 | Esc                           | quit, keeping the query                  |
 | Ctrl-C                        | quit, leaving the prompt line as it was  |
 
-`hdf --delete-last [N]` deletes the last N commands from history, 1 by default, and prints them.
+`istoria --delete-last [N]` deletes the last N commands from history, 1 by default, and prints them.
 It needs the history saved at each prompt, see [Bash history](#bash-history).
 
-`hdf --help` lists all options and exit statuses.
+`istoria --help` lists all options and exit statuses.
 
 ## Config
 
-`hdf --init-config` writes the defaults to `~/.config/hdf/config.toml` (or under
+`istoria --init-config` writes the defaults to `~/.config/istoria/config.toml` (or under
 `$XDG_CONFIG_HOME`). Keys left out keep their defaults:
 
 ```toml
@@ -124,4 +124,4 @@ A color is a name (`yellow`, `light-blue`, `dark-gray`), `0` to `255` or `#rrggb
 ## Development
 
 `bundle install`, then `bundle exec rake` runs rubocop, `cargo fmt --check`, `cargo test`, clippy
-and the Ruby tests, which drive hdf in a pseudo terminal.
+and the Ruby tests, which drive istoria in a pseudo terminal.

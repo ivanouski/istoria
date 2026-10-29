@@ -1,43 +1,45 @@
 # frozen_string_literal: true
 
-require_relative 'hdf_test_case'
+require_relative 'istoria_test_case'
 
-class HdfrcTest < HdfTestCase
-  def test_hdfrc_binds_up_and_down
-    stdout, = Open3.capture3({ 'PATH' => "#{HDF_DIR}:#{ENV.fetch('PATH')}" }, *bash_with_hdfrc('bind -X; bind -s'))
+class IstoriarcTest < IstoriaTestCase
+  def test_istoriarc_binds_up_and_down
+    stdout, = Open3.capture3({ 'PATH' => "#{ISTORIA_DIR}:#{ENV.fetch('PATH')}" },
+                             *bash_with_istoriarc('bind -X; bind -s'))
 
     bindings = stdout.lines(chomp: true).map { |line| line.scan(/"([^"]*)"/).flatten }
     macro = '\e[9100~\e[9101~'
 
-    assert_equal [['\eOA', macro], ['\eOB', macro], ['\e[9100~', '__hdf_search'], ['\e[A', macro], ['\e[B', macro]],
+    assert_equal [['\eOA', macro], ['\eOB', macro], ['\e[9100~', '__istoria_search'], ['\e[A', macro], ['\e[B', macro]],
                  bindings.sort
   end
 
-  def test_hdfrc_does_nothing_in_a_non_interactive_shell
-    stdout, stderr, status = Open3.capture3({ 'PATH' => "#{HDF_DIR}:#{ENV.fetch('PATH')}" },
-                                            'bash', '--norc', '--noprofile', '-c', ". #{HDFRC}; type __hdf_search")
+  def test_istoriarc_does_nothing_in_a_non_interactive_shell
+    stdout, stderr, status = Open3.capture3({ 'PATH' => "#{ISTORIA_DIR}:#{ENV.fetch('PATH')}" },
+                                            'bash', '--norc', '--noprofile', '-c',
+                                            ". #{ISTORIARC}; type __istoria_search")
 
     refute status.success?
     assert_empty stdout
-    assert_equal ["bash: line 1: type: __hdf_search: not found\n"], [stderr]
+    assert_equal ["bash: line 1: type: __istoria_search: not found\n"], [stderr]
   end
 
-  def test_hdfrc_does_nothing_without_hdf
+  def test_istoriarc_does_nothing_without_istoria
     stdout, stderr, status = Open3.capture3({ 'PATH' => '/usr/bin:/bin' },
-                                            *bash_with_hdfrc('bind -X; type __hdf_search'))
+                                            *bash_with_istoriarc('bind -X; type __istoria_search'))
 
     refute status.success?
     assert_empty stdout
-    assert_includes stderr, '__hdf_search: not found'
+    assert_includes stderr, '__istoria_search: not found'
   end
 
-  def test_up_opens_hdf_with_the_typed_text_and_enter_runs_the_command
+  def test_up_opens_istoria_with_the_typed_text_and_enter_runs_the_command
     File.write(@history, "echo first\necho picked\nls\n")
     start_bash
 
     @session.type('pick')
     @session.press(:up)
-    wait_for_hdf_in_bash('pick')
+    wait_for_istoria_in_bash('pick')
 
     assert_equal ['$ pick', 'echo picked'], pane
 
@@ -51,7 +53,7 @@ class HdfrcTest < HdfTestCase
     start_bash
 
     @session.press(:up)
-    wait_for_hdf_in_bash
+    wait_for_istoria_in_bash
     @session.press(:tab)
     @session.wait_for { |lines| lines.first == '$ echo picked' }
     @session.type('X')
@@ -65,7 +67,7 @@ class HdfrcTest < HdfTestCase
     start_bash
 
     @session.press(:up)
-    wait_for_hdf_in_bash
+    wait_for_istoria_in_bash
     @session.press(:down, :enter)
     @session.wait_for { |lines| lines.include?('first') }
     @session.type("history\r")
@@ -78,7 +80,7 @@ class HdfrcTest < HdfTestCase
     start_bash
 
     @session.press(:up)
-    wait_for_hdf_in_bash
+    wait_for_istoria_in_bash
 
     assert_equal ['$', 'ls', 'echo first'], pane
   end
@@ -112,7 +114,7 @@ class HdfrcTest < HdfTestCase
     File.write(@history, "echo first\necho picked\n")
     # Bash expands PS1 once for its own prompt, every expansion adds a line
     expansions = File.join(@tmp_dir, 'expansions')
-    start_bash(ps1: "$(echo >> #{expansions})box\\$ ", bashrc: 'HDF_SHELL_PROMPT=false')
+    start_bash(ps1: "$(echo >> #{expansions})box\\$ ", bashrc: 'ISTORIA_SHELL_PROMPT=false')
 
     @session.type('pick')
     @session.press(:up)
@@ -121,10 +123,10 @@ class HdfrcTest < HdfTestCase
     assert_equal 1, File.readlines(expansions).size
   end
 
-  def test_shows_hdf_prompt_in_its_colors_without_expanding_the_shell_prompt
+  def test_shows_istoria_prompt_in_its_colors_without_expanding_the_shell_prompt
     File.write(@history, "echo first\necho picked\n")
     expansions = File.join(@tmp_dir, 'expansions')
-    start_bash(ps1: "$(echo >> #{expansions})box\\$ ", bashrc: %q(HDF_PROMPT='\[\e[32m\]mon›\[\e[0m\] '))
+    start_bash(ps1: "$(echo >> #{expansions})box\\$ ", bashrc: %q(ISTORIA_PROMPT='\[\e[32m\]mon›\[\e[0m\] '))
 
     @session.type('pick')
     @session.press(:up)
@@ -134,12 +136,12 @@ class HdfrcTest < HdfTestCase
     assert_equal 1, File.readlines(expansions).size
   end
 
-  def test_up_opens_hdf_with_nounset_on
+  def test_up_opens_istoria_with_nounset_on
     File.write(@history, "echo first\nls\n")
     start_bash(bashrc: 'set -u')
 
     @session.press(:up)
-    wait_for_hdf_in_bash
+    wait_for_istoria_in_bash
 
     assert_equal ['$', 'ls', 'echo first'], pane
   end
@@ -157,13 +159,13 @@ class HdfrcTest < HdfTestCase
     @session.wait_for { |lines| lines.first == '$ echo second' }
   end
 
-  def test_down_opens_hdf_too
+  def test_down_opens_istoria_too
     File.write(@history, "echo first\nls\n")
     start_bash
 
     @session.type('echo')
     @session.press(:down)
-    wait_for_hdf_in_bash('echo')
+    wait_for_istoria_in_bash('echo')
 
     assert_equal ['$ echo', 'echo first'], pane
   end
@@ -173,7 +175,7 @@ class HdfrcTest < HdfTestCase
 
     @session.type('sbx')
     @session.press(:up)
-    wait_for_hdf_in_bash('sbx')
+    wait_for_istoria_in_bash('sbx')
     @session.press(:escape)
 
     @session.wait_for { |lines| lines.first == '$ sbx' }
@@ -184,9 +186,9 @@ class HdfrcTest < HdfTestCase
 
     @session.type('sbx run')
     @session.press(:up)
-    wait_for_hdf_in_bash('sbx run')
+    wait_for_istoria_in_bash('sbx run')
     @session.press(:backspace, :backspace, :backspace, :backspace)
-    wait_for_hdf_in_bash('sbx')
+    wait_for_istoria_in_bash('sbx')
     @session.press(:escape)
     wait_for_bash('$ sbx')
     @session.type('X')
@@ -199,7 +201,7 @@ class HdfrcTest < HdfTestCase
 
     @session.type("sbx run\e[D\e[D\e[D")
     @session.press(:up)
-    wait_for_hdf_in_bash('sbx run')
+    wait_for_istoria_in_bash('sbx run')
     @session.press(:escape)
     wait_for_bash('$ sbx run')
     @session.type('X')
@@ -212,9 +214,9 @@ class HdfrcTest < HdfTestCase
 
     @session.type('sbx run')
     @session.press(:up)
-    wait_for_hdf_in_bash('sbx run')
+    wait_for_istoria_in_bash('sbx run')
     @session.press(:backspace, :backspace, :backspace)
-    wait_for_hdf_in_bash('sbx')
+    wait_for_istoria_in_bash('sbx')
     @session.press(:escape)
     wait_for_bash('$ sbx')
     @session.type('X')
@@ -227,29 +229,29 @@ class HdfrcTest < HdfTestCase
 
     @session.type('sbx run')
     @session.press(:up)
-    wait_for_hdf_in_bash('sbx run')
+    wait_for_istoria_in_bash('sbx run')
     @session.type('zzz')
-    wait_for_hdf_in_bash('sbx runzzz')
+    wait_for_istoria_in_bash('sbx runzzz')
     @session.press(:enter)
 
     @session.wait_for { |lines| lines.first == '$ sbx runzzz' }
   end
 
-  def test_an_older_hdf_leaves_the_typed_text
+  def test_an_older_istoria_leaves_the_typed_text
     old_bin = File.join(@tmp_dir, 'old_bin')
     FileUtils.mkdir_p(old_bin)
-    File.write(File.join(old_bin, 'hdf'), <<~SH)
+    File.write(File.join(old_bin, 'istoria'), <<~SH)
       #!/bin/sh
-      echo "hdf: invalid option: --print-query" >&2
+      echo "istoria: invalid option: --print-query" >&2
       exit 1
     SH
-    File.chmod(0o755, File.join(old_bin, 'hdf'))
+    File.chmod(0o755, File.join(old_bin, 'istoria'))
     start_bash(path: old_bin)
 
     @session.type('sbx run')
     @session.press(:up)
 
-    @session.wait_for_text('hdf: invalid option: --print-query')
+    @session.wait_for_text('istoria: invalid option: --print-query')
     @session.wait_for { |lines| lines.any? { |line| line == '$ sbx run' } }
   end
 
@@ -258,7 +260,7 @@ class HdfrcTest < HdfTestCase
 
     @session.type('sbx run')
     @session.press(:up)
-    wait_for_hdf_in_bash('sbx run')
+    wait_for_istoria_in_bash('sbx run')
     @session.press(:backspace, :backspace, :backspace, :backspace)
     @session.wait_for { |lines| !lines.first.include?('run') }
     @session.press(:ctrl_c)
@@ -274,7 +276,7 @@ class HdfrcTest < HdfTestCase
     @session.type('sbx run')
     @session.press(:up)
 
-    @session.wait_for_text('hdf: cannot read')
+    @session.wait_for_text('istoria: cannot read')
     @session.wait_for { |lines| lines.last(24).any? { |line| line == '$ sbx run' } }
   end
 
@@ -285,7 +287,7 @@ class HdfrcTest < HdfTestCase
     @session.type("echo fresh\r")
     @session.wait_for_text('fresh')
     @session.press(:up)
-    wait_for_hdf_in_bash
+    wait_for_istoria_in_bash
 
     assert_equal ['$', 'echo fresh'], pane
   end
@@ -295,7 +297,7 @@ class HdfrcTest < HdfTestCase
     start_bash
 
     @session.press(:up)
-    wait_for_hdf_in_bash
+    wait_for_istoria_in_bash
     @session.press(:down)
     delete
     @session.press(:escape)
@@ -312,7 +314,7 @@ class HdfrcTest < HdfTestCase
     start_bash
 
     @session.press(:up)
-    wait_for_hdf_in_bash
+    wait_for_istoria_in_bash
     @session.press(:tab)
     @session.wait_for_text('$ echo second')
     @session.press(:ctrl_u)

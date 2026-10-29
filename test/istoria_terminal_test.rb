@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-require_relative 'hdf_test_case'
+require_relative 'istoria_test_case'
 
-class HdfTerminalTest < HdfTestCase
+class IstoriaTerminalTest < IstoriaTestCase
   def test_opens_on_the_cursor_line_and_clears_the_pane
     start('clau', start_row: 5)
 
@@ -15,7 +15,7 @@ class HdfTerminalTest < HdfTestCase
   end
 
   def test_opens_below_text_on_the_cursor_line_and_returns_to_it
-    start(command: ['sh', '-c', %(printf 'PROMPT$ '; exec "$0" "$@"), HDF, 'clau'])
+    start(command: ['sh', '-c', %(printf 'PROMPT$ '; exec "$0" "$@"), ISTORIA, 'clau'])
 
     assert_equal 'PROMPT$', @session.screen[0]
     assert_equal ['› clau', 'Claude', 'claude --resume', 'sbx run claude (3)', 'sbx build claude'], pane
@@ -44,7 +44,7 @@ class HdfTerminalTest < HdfTestCase
   end
 
   def test_closes_the_pane_when_its_shell_is_gone
-    start(command: ['sh', '-c', %q(sh -c '"$0" "$@"; :' "$0" "$@"; sleep 5), HDF, 'clau'])
+    start(command: ['sh', '-c', %q(sh -c '"$0" "$@"; :' "$0" "$@"; sleep 5), ISTORIA, 'clau'])
     shell = Integer(`pgrep -P #{@session.pid} -x sh`)
 
     Process.kill('KILL', shell)

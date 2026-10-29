@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-require_relative 'hdf_test_case'
+require_relative 'istoria_test_case'
 
-class HdfListingTest < HdfTestCase
+class IstoriaListingTest < IstoriaTestCase
   LONG_COMMAND = 'kubectl apply -f k8s/prod/ --context=prod-eu-west-1 --server-side ' \
                  '--force-conflicts && ./deploy.sh notify'
 

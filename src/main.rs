@@ -1,4 +1,4 @@
-//! hdf, a finder for bash history: prints the command picked from $HISTFILE
+//! istoria, a finder for bash history: prints the command picked from $HISTFILE
 
 mod app;
 mod cli;
@@ -25,8 +25,8 @@ use context::Context;
 use finder::Finder;
 use history::History;
 
-// Exit statuses .hdfrc acts on. The query's own status keeps an older hdf's failure from reading
-// as an empty query.
+// Exit statuses .istoriarc acts on. The query's own status keeps an older istoria's failure from
+// reading as an empty query.
 const QUIT_STATUS: u8 = 1;
 const ERROR_STATUS: u8 = 2;
 const QUERY_STATUS: u8 = 3;
@@ -37,7 +37,7 @@ fn main() -> ExitCode {
     match run() {
         Ok(status) => status,
         Err(message) => {
-            eprintln!("hdf: {message}");
+            eprintln!("istoria: {message}");
             ExitCode::from(ERROR_STATUS)
         }
     }
@@ -63,7 +63,7 @@ fn run() -> Result<ExitCode, String> {
             return Ok(ExitCode::SUCCESS);
         }
         Args::Version => {
-            print_line(&format!("hdf {}", env!("CARGO_PKG_VERSION")))?;
+            print_line(&format!("istoria {}", env!("CARGO_PKG_VERSION")))?;
             return Ok(ExitCode::SUCCESS);
         }
     };

@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-require_relative 'hdf_test_case'
+require_relative 'istoria_test_case'
 
-class HdfListAboveTest < HdfTestCase
+class IstoriaListAboveTest < IstoriaTestCase
   def setup
     super
     write_config(%(list = "above"\n))
@@ -59,7 +59,7 @@ class HdfListAboveTest < HdfTestCase
     assert_picks(:up, :enter, 'Claude')
   end
 
-  def test_up_in_bash_opens_hdf_and_goes_back_in_history
+  def test_up_in_bash_opens_istoria_and_goes_back_in_history
     File.write(@history, "echo first\necho picked\nls\n")
     write_config(%(list = "above"\n), home: File.join(@tmp_dir, '.config'))
     start_bash

@@ -191,7 +191,7 @@ fn write_atomically(path: &Path, content: &[u8]) -> io::Result<()> {
         .file_name()
         .map(|name| name.to_string_lossy())
         .unwrap_or_default();
-    let temp_path = path.with_file_name(format!(".{file_name}.hdf-{}", process::id()));
+    let temp_path = path.with_file_name(format!(".{file_name}.istoria-{}", process::id()));
     let result = replace_through(path, &temp_path, content);
 
     if result.is_err() {

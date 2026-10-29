@@ -156,7 +156,7 @@ fn path() -> Option<PathBuf> {
         .filter(|dir| Path::new(dir).is_absolute())
         .map(PathBuf::from)
         .or_else(|| env::home_dir().map(|home| home.join(".config")))
-        .map(|dir| dir.join("hdf").join("config.toml"))
+        .map(|dir| dir.join("istoria").join("config.toml"))
 }
 
 fn height<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u16, D::Error> {

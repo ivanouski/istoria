@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-require_relative 'hdf_test_case'
+require_relative 'istoria_test_case'
 
-class HdfTimestampsTest < HdfTestCase
+class IstoriaTimestampsTest < IstoriaTestCase
   def test_shows_when_each_command_last_ran
     File.write(@history, "#1700000000\nsbx run claude\n#1700003600\npwd\n#1700090000\nsbx run claude\n")
     start

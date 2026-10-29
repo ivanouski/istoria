@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-require_relative 'hdf_test_case'
+require_relative 'istoria_test_case'
 
-class HdfPickingTest < HdfTestCase
+class IstoriaPickingTest < IstoriaTestCase
   def test_enter_prints_the_most_recent_match
     start('clau')
 
@@ -129,7 +129,7 @@ class HdfPickingTest < HdfTestCase
 
   def test_keeps_trailing_whitespace_in_the_query
     output = File.join(@tmp_dir, 'output')
-    start(command: ['sh', '-c', %("$0" "$@" > "#{output}"), HDF, '--print-query', 'sbx  '])
+    start(command: ['sh', '-c', %("$0" "$@" > "#{output}"), ISTORIA, '--print-query', 'sbx  '])
 
     @session.press(:escape)
 
@@ -140,7 +140,7 @@ class HdfPickingTest < HdfTestCase
   def test_prints_an_empty_query
     File.write(@history, "ls\n")
     output = File.join(@tmp_dir, 'output')
-    start(command: ['sh', '-c', %("$0" "$@" > "#{output}"), HDF, '--print-query', 'l'])
+    start(command: ['sh', '-c', %("$0" "$@" > "#{output}"), ISTORIA, '--print-query', 'l'])
 
     @session.press(:backspace, :escape)
 
@@ -164,7 +164,7 @@ class HdfPickingTest < HdfTestCase
 
   def test_prints_to_captured_stdout
     output = File.join(@tmp_dir, 'output')
-    start(command: ['sh', '-c', %("$0" "$@" > "#{output}"), HDF, 'clau'])
+    start(command: ['sh', '-c', %("$0" "$@" > "#{output}"), ISTORIA, 'clau'])
 
     @session.press(:down, :enter)
 

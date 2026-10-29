@@ -64,7 +64,7 @@ pub fn watch_signals() -> io::Result<Arc<AtomicUsize>> {
 
 /// crossterm blocks on a closed terminal, so exit for the signal once the loop had time to clean up
 fn exit_when_stuck(signal: Arc<AtomicUsize>) {
-    // Not 1: a shell running as PID 1, as in a container, is hdf's parent
+    // Not 1: a shell running as PID 1, as in a container, is istoria's parent
     let parent = std::os::unix::process::parent_id();
 
     thread::spawn(move || {

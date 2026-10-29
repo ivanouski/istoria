@@ -1,6 +1,6 @@
 #!/bin/bash
 
-_hdf() {
+_istoria() {
   local current="${COMP_WORDS[COMP_CWORD]}"
   local word index print_query="" prompt=""
   local -a candidates=()
@@ -40,4 +40,4 @@ _hdf() {
   return 0
 }
 
-complete -F _hdf hdf
+complete -F _istoria istoria

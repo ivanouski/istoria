@@ -16,7 +16,7 @@ impl TempFile {
     pub fn new(name: &str, content: &str) -> Self {
         static COUNT: AtomicUsize = AtomicUsize::new(0);
         let number = COUNT.fetch_add(1, Ordering::Relaxed);
-        let path = env::temp_dir().join(format!("hdf-test-{name}-{}-{number}", process::id()));
+        let path = env::temp_dir().join(format!("istoria-test-{name}-{}-{number}", process::id()));
         fs::write(&path, content).unwrap();
 
         Self { path }

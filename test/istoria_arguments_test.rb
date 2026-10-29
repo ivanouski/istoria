@@ -1,34 +1,34 @@
 # frozen_string_literal: true
 
-require_relative 'hdf_test_case'
+require_relative 'istoria_test_case'
 
-class HdfArgumentsTest < HdfTestCase
+class IstoriaArgumentsTest < IstoriaTestCase
   def test_prints_help
-    stdout, stderr, status = run_hdf('--help')
+    stdout, stderr, status = run_istoria('--help')
 
     assert status.success?
     assert_empty stderr
-    assert_match(/\AUsage: hdf \[OPTIONS\] \[QUERY\]$/, stdout)
+    assert_match(/\AUsage: istoria \[OPTIONS\] \[QUERY\]$/, stdout)
   end
 
   def test_prints_the_version
     version = File.read(File.join(CRATE, 'Cargo.toml'))[/^version = "(.+)"$/, 1]
 
     %w[-V --version].each do |option|
-      stdout, stderr, status = run_hdf(option)
+      stdout, stderr, status = run_istoria(option)
 
       assert status.success?
       assert_empty stderr
-      assert_equal "hdf #{version}\n", stdout
+      assert_equal "istoria #{version}\n", stdout
     end
   end
 
   def test_help_and_version_fail_on_a_closed_stdout
     %w[--help --version].each do |option|
-      stderr, status = run_hdf_into_a_closed_pipe(option)
+      stderr, status = run_istoria_into_a_closed_pipe(option)
 
       assert_equal 2, status.exitstatus
-      assert_equal "hdf: cannot print: Broken pipe (os error 32)\n", stderr
+      assert_equal "istoria: cannot print: Broken pipe (os error 32)\n", stderr
     end
   end
 
@@ -40,10 +40,10 @@ class HdfArgumentsTest < HdfTestCase
   end
 
   def test_rejects_unknown_option
-    _, stderr, status = run_hdf('-x')
+    _, stderr, status = run_istoria('-x')
 
     assert_equal 2, status.exitstatus
-    assert_equal "hdf: invalid option: -x\nTry 'hdf --help' for usage.\n", stderr
+    assert_equal "istoria: invalid option: -x\nTry 'istoria --help' for usage.\n", stderr
   end
 
   def test_double_dash_starts_the_query
@@ -60,9 +60,9 @@ class HdfArgumentsTest < HdfTestCase
   end
 
   def test_fails_on_a_missing_history_file
-    _, stderr, status = run_hdf('ls', env: { 'HISTFILE' => File.join(@tmp_dir, 'missing') })
+    _, stderr, status = run_istoria('ls', env: { 'HISTFILE' => File.join(@tmp_dir, 'missing') })
 
     assert_equal 2, status.exitstatus
-    assert_match(/\Ahdf: cannot read .*missing: No such file or directory/, stderr)
+    assert_match(/\Aistoria: cannot read .*missing: No such file or directory/, stderr)
   end
 end
