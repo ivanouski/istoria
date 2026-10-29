@@ -61,9 +61,10 @@ the shell's history.
 
 Each word of the query matches anywhere in a command, in any order, ignoring case: `push git`
 finds `git -C api push`. With bash 4.4 or later istoria shows your prompt in place of `›`, unless
-it takes more than 60% of the width. Bash expands the prompt each time istoria opens, running any
-`$(...)` in `PS1` again, which a git status in a big repo makes slow. `ISTORIA_SHELL_PROMPT=false`
-in `~/.bashrc` keeps `›`. `ISTORIA_PROMPT`, written like `PS1`, shows in place of either:
+it takes more than 60% of the width, which hides the times too to leave room for the commands. Bash
+expands the prompt each time istoria opens, running any `$(...)` in `PS1` again, which a git status
+in a big repo makes slow. `ISTORIA_SHELL_PROMPT=false` in `~/.bashrc` keeps `›`. `ISTORIA_PROMPT`,
+written like `PS1`, shows in place of either:
 
 ```bash
 ISTORIA_PROMPT='\[\e[35m\]mon›\[\e[0m\] '

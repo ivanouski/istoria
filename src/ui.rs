@@ -45,7 +45,9 @@ pub fn draw(
     let (theme, list) = (&config.colors, config.list);
     let area = frame.area();
     let shell_prompt = shell_prompt(prompt, area.width);
-    let layout = RowLayout::new(finder, shell_prompt.map(Line::width), area.width);
+    // A pane too narrow for the prompt is too narrow for the times as well
+    let times = finder.has_times() && !prompt.is_some_and(|prompt| too_wide(prompt, area.width));
+    let layout = RowLayout::new(times, shell_prompt.map(Line::width), area.width);
     let [prompt_area, divider_area, body] = split(area, list);
     let (body, border_area) = split_border(body, config.border, list);
     let preview = config
@@ -179,7 +181,12 @@ fn list_offset(offset: usize, finder: &Finder, height: usize) -> usize {
 
 /// The shell prompt when it shows anything and leaves the query room, None for ›
 pub fn shell_prompt<'a>(prompt: Option<&'a Line<'a>>, width: u16) -> Option<&'a Line<'a>> {
-    prompt.filter(|prompt| prompt.width() > 0 && prompt.width() * 5 <= usize::from(width) * 3)
+    prompt.filter(|prompt| prompt.width() > 0 && !too_wide(prompt, width))
+}
+
+/// Wider than 60% of the pane
+fn too_wide(prompt: &Line, width: u16) -> bool {
+    prompt.width() * 5 > usize::from(width) * 3
 }
 
 /// Only the shell prompt, on the first row, for the pane to keep when it closes
@@ -298,7 +305,7 @@ fn count(finder: &Finder, theme: &Theme, status: Option<&Status>) -> (String, St
 
 /// In place of the list when nothing matches, where the commands would start
 fn nothing_found(finder: &Finder, layout: &RowLayout, theme: &Theme) -> Line<'static> {
-    let time_width = if finder.has_times() { TIME_COLUMN } else { 0 };
+    let time_width = if layout.times { TIME_COLUMN } else { 0 };
     let text = if finder.commands().is_empty() {
         NO_COMMANDS
     } else {
@@ -313,6 +320,8 @@ fn nothing_found(finder: &Finder, layout: &RowLayout, theme: &Theme) -> Line<'st
 
 /// What every row starts with
 struct RowLayout {
+    /// Whether to show a time column
+    times: bool,
     /// Before the time, or before the command without times
     indent: String,
     /// Left for the command and its number of runs
@@ -320,11 +329,12 @@ struct RowLayout {
 }
 
 impl RowLayout {
-    fn new(finder: &Finder, prompt_width: Option<usize>, pane_width: u16) -> Self {
-        let time_width = if finder.has_times() { TIME_COLUMN } else { 0 };
+    fn new(times: bool, prompt_width: Option<usize>, pane_width: u16) -> Self {
+        let time_width = if times { TIME_COLUMN } else { 0 };
         let column = command_column(prompt_width, time_width);
 
         Self {
+            times,
             indent: " ".repeat(column - time_width),
             command_width: usize::from(pane_width).saturating_sub(column),
         }
@@ -362,7 +372,7 @@ fn row<'a>(
     let fitted = layout.fit(command, &found.ranges);
     let mut spans = vec![Span::raw(layout.indent.as_str())];
 
-    if finder.has_times() {
+    if layout.times {
         let time = command.time.as_deref().unwrap_or_default();
         spans.push(Span::styled(format!("{time:<TIME_WIDTH$}  "), dim));
     }
@@ -1071,6 +1081,19 @@ mod tests {
         assert_eq!(first_command_column(&kept), 24);
         assert!(text(&wide, 0).starts_with("› ls "));
         assert_eq!(first_command_column(&wide), INDENT);
+    }
+
+    #[test]
+    fn hides_the_times_with_a_prompt_wider_than_60_percent_of_the_pane() {
+        let finder = finder(HISTORY);
+        let wide_prompt = format!("{}$ ", "d".repeat(23));
+        let wide = Render::new(&finder).prompt(&wide_prompt).run().buffer;
+        let empty = Render::new(&finder).prompt("").run().buffer;
+
+        assert_eq!(text(&wide, FIRST_ROW).trim_end(), "  ls");
+        assert_eq!(text(&wide, FIRST_ROW + 1).trim_end(), "  ls -la");
+        // Not for a prompt with nothing to show
+        assert_eq!(first_command_column(&empty), INDENT + TIME_COLUMN);
     }
 
     /// Most recent first, a command of 54 columns run twice, matched by ls at its end
