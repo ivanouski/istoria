@@ -31,6 +31,15 @@ class IstoriaTimestampsTest < IstoriaTestCase
     assert_equal ['›', '2023-11-14 22:13  ls (2)', 'pwd'], pane
   end
 
+  def test_hides_the_times_when_turned_off
+    File.write(@history, "#1700000000\nsbx run claude\n#1700003600\npwd\n")
+    write_config("times = false\n")
+    start
+
+    assert_equal ['›', 'pwd', 'sbx run claude'], pane
+    assert_equal '  pwd', @session.screen[FIRST_ROW]
+  end
+
   def test_matches_commands_not_times
     File.write(@history, "#1700000000\npwd\n")
     start('2023')

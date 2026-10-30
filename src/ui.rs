@@ -47,7 +47,9 @@ pub fn draw(
     let area = frame.area();
     let shell_prompt = shell_prompt(prompt, area.width);
     // A pane too narrow for the prompt is too narrow for the times as well
-    let times = finder.has_times() && !prompt.is_some_and(|prompt| too_wide(prompt, area.width));
+    let times = config.times
+        && finder.has_times()
+        && !prompt.is_some_and(|prompt| too_wide(prompt, area.width));
     let prompt_line = prompt_line(shell_prompt, label, theme);
     // Under the query after a shell prompt, which a label moves along
     let layout = RowLayout::new(times, shell_prompt.map(|_| prompt_line.width()), area.width);
@@ -657,6 +659,7 @@ mod tests {
         list: ListPosition,
         border: bool,
         preview: bool,
+        times: bool,
         width: u16,
         height: u16,
         offset: usize,
@@ -680,6 +683,7 @@ mod tests {
                 list: ListPosition::Below,
                 border: false,
                 preview: false,
+                times: true,
                 width: 40,
                 height: 4,
                 offset: 0,
@@ -732,6 +736,13 @@ mod tests {
             }
         }
 
+        fn no_times(self) -> Self {
+            Self {
+                times: false,
+                ..self
+            }
+        }
+
         fn width(self, width: u16) -> Self {
             Self { width, ..self }
         }
@@ -751,6 +762,7 @@ mod tests {
                 list: self.list,
                 border: self.border,
                 preview: self.preview,
+                times: self.times,
                 colors: self.theme,
                 ..Config::default()
             };
@@ -1152,6 +1164,25 @@ mod tests {
         assert_eq!(text(&wide, FIRST_ROW + 1).trim_end(), "  ls -la");
         // Not for a prompt with nothing to show
         assert_eq!(first_command_column(&empty), INDENT + TIME_COLUMN);
+    }
+
+    #[test]
+    fn hides_the_times_when_turned_off() {
+        let prompt = "[user@pc ~/src/utils (main)]$ ";
+        let finder = finder(HISTORY);
+        let plain = Render::new(&finder).no_times().run().buffer;
+        let after_prompt = Render::new(&finder)
+            .prompt(prompt)
+            .width(120)
+            .no_times()
+            .run()
+            .buffer;
+
+        assert_eq!(text(&plain, FIRST_ROW).trim_end(), "  ls");
+        assert_eq!(text(&plain, FIRST_ROW + 1).trim_end(), "  ls -la");
+        // Still under the query
+        assert_eq!(first_command_column(&after_prompt), prompt.len());
+        assert_eq!(text(&after_prompt, FIRST_ROW).trim(), "ls");
     }
 
     /// Most recent first, a command of 54 columns run twice, matched by ls at its end

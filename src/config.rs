@@ -18,6 +18,7 @@ pub const DEFAULT: &str = r#"height  = 12      # rows of the pane, the terminal'
 list    = "below" # or "above" the prompt line, like fzf
 border  = false   # a line on the far edge of the pane
 preview = false   # the selected command in full when its row is cut
+times   = true    # when each command ran, if the history has times
 [colors]
 prompt   = { fg = "blue", bold = true }
 backup   = "yellow"        # the prompt searching backups
@@ -44,6 +45,8 @@ pub struct Config {
     pub border: bool,
     /// The selected command in full when its row is cut
     pub preview: bool,
+    /// When each command ran, if the history has times
+    pub times: bool,
     pub colors: Theme,
 }
 
@@ -63,6 +66,7 @@ impl Default for Config {
             list: ListPosition::default(),
             border: false,
             preview: false,
+            times: true,
             colors: Theme::default(),
         }
     }
@@ -269,6 +273,7 @@ mod tests {
         assert_eq!(config.list, Config::default().list);
         assert_eq!(config.border, Config::default().border);
         assert_eq!(config.preview, Config::default().preview);
+        assert_eq!(config.times, Config::default().times);
         assert_eq!(config.colors, Theme::default());
     }
 
@@ -304,6 +309,13 @@ mod tests {
         assert!(!Config::parse("").unwrap().preview);
         assert!(Config::parse("preview = true\n").unwrap().preview);
         assert!(error("preview = \"yes\"\n").contains("expected a boolean"));
+    }
+
+    #[test]
+    fn reads_the_times() {
+        assert!(Config::parse("").unwrap().times);
+        assert!(!Config::parse("times = false\n").unwrap().times);
+        assert!(error("times = \"no\"\n").contains("expected a boolean"));
     }
 
     #[test]

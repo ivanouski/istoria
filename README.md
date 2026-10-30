@@ -105,6 +105,7 @@ height  = 12      # rows of the pane, the terminal's at most
 list    = "below" # or "above" the prompt line, like fzf
 border  = false   # a line on the far edge of the pane
 preview = false   # the selected command in full when its row is cut
+times   = true    # when each command ran, if the history has times
 [colors]
 prompt   = { fg = "blue", bold = true }
 backup   = "yellow"        # the prompt searching backups
