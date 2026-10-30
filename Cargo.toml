@@ -1,6 +1,6 @@
 [package]
 name = "istoria"
-version = "0.27.0"
+version = "0.28.0"
 edition = "2024"
 description = "A fuzzy finder for bash history"
 license = "MIT"
@@ -9,7 +9,8 @@ publish = false
 [dependencies]
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 ratatui = { version = "0.30", default-features = false, features = ["crossterm"] }
-rustix = { version = "1", default-features = false, features = ["std", "stdio"] }
+rusqlite = { version = "0.41", features = ["bundled"] }
+rustix = { version = "1", default-features = false, features = ["std", "stdio", "system"] }
 serde = { version = "1", features = ["derive"] }
 signal-hook = "0.3"
 toml = "1"

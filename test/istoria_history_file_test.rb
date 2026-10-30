@@ -88,7 +88,7 @@ class IstoriaHistoryFileTest < IstoriaTestCase
   end
 
   def test_delete_last_deletes_the_last_command
-    stdout, stderr, status = run_istoria('--delete-last')
+    stdout, stderr, status = run_istoria('delete-last')
 
     assert status.success?
     assert_empty stderr
@@ -97,7 +97,7 @@ class IstoriaHistoryFileTest < IstoriaTestCase
   end
 
   def test_delete_last_deletes_the_last_n_commands_only
-    stdout, _, status = run_istoria('--delete-last', '3')
+    stdout, _, status = run_istoria('delete-last', '3')
 
     assert status.success?
     assert_equal "git push \nClaude\ngg\n", stdout
@@ -106,7 +106,7 @@ class IstoriaHistoryFileTest < IstoriaTestCase
 
   def test_delete_last_deletes_timestamps_with_their_commands
     File.write(@history, "#1\nls\n#2\nfor x\ndo\n")
-    stdout, _, status = run_istoria('--delete-last')
+    stdout, _, status = run_istoria('delete-last')
 
     assert status.success?
     assert_equal "for x\ndo\n", stdout
@@ -114,14 +114,14 @@ class IstoriaHistoryFileTest < IstoriaTestCase
   end
 
   def test_delete_last_deletes_everything_when_asked_for_more
-    run_istoria('--delete-last', '100')
+    run_istoria('delete-last', '100')
 
     assert_empty File.read(@history)
   end
 
   def test_delete_last_rejects_an_invalid_count
     %w[0 x 2x -3 +2 --print-query].each do |count|
-      _, stderr, status = run_istoria('--delete-last', count)
+      _, stderr, status = run_istoria('delete-last', count)
 
       assert_equal 2, status.exitstatus
       assert_equal "istoria: invalid count: #{count}\nTry 'istoria --help' for usage.\n", stderr
@@ -130,19 +130,25 @@ class IstoriaHistoryFileTest < IstoriaTestCase
   end
 
   def test_delete_last_takes_no_other_arguments
-    [%w[--delete-last 3 foo], %w[docker --delete-last], %w[--print-query --delete-last]].each do |args|
-      _, stderr, status = run_istoria(*args)
+    _, stderr, status = run_istoria('delete-last', '3', 'foo')
 
-      assert_equal 2, status.exitstatus
-      assert_equal "istoria: --delete-last takes no other arguments\nTry 'istoria --help' for usage.\n", stderr
-      assert_equal HISTORY, File.read(@history)
-    end
+    assert_equal 2, status.exitstatus
+    assert_equal "istoria: delete-last takes no other arguments\nTry 'istoria --help' for usage.\n", stderr
+    assert_equal HISTORY, File.read(@history)
+  end
+
+  def test_rejects_the_delete_last_option_of_old_versions
+    _, stderr, status = run_istoria('--delete-last')
+
+    assert_equal 2, status.exitstatus
+    assert_equal "istoria: invalid option: --delete-last\nTry 'istoria --help' for usage.\n", stderr
+    assert_equal HISTORY, File.read(@history)
   end
 
   def test_delete_last_leaves_an_empty_history_alone
     File.write(@history, "\n")
     inode = File.stat(@history).ino
-    stdout, _, status = run_istoria('--delete-last')
+    stdout, _, status = run_istoria('delete-last')
 
     assert status.success?
     assert_empty stdout
@@ -153,7 +159,7 @@ class IstoriaHistoryFileTest < IstoriaTestCase
     reader, writer = IO.pipe
     reader.close
     stderr = File.join(@tmp_dir, 'stderr')
-    pid = Process.spawn({ 'HISTFILE' => @history }, ISTORIA, '--delete-last', '3', out: writer, err: stderr)
+    pid = Process.spawn({ 'HISTFILE' => @history }, ISTORIA, 'delete-last', '3', out: writer, err: stderr)
     writer.close
     _, status = Process.wait2(pid)
 

@@ -12,11 +12,8 @@ pub struct TempFile {
 }
 
 impl TempFile {
-    /// The name is for finding a file left behind, a number keeps the paths of tests apart
     pub fn new(name: &str, content: &str) -> Self {
-        static COUNT: AtomicUsize = AtomicUsize::new(0);
-        let number = COUNT.fetch_add(1, Ordering::Relaxed);
-        let path = env::temp_dir().join(format!("istoria-test-{name}-{}-{number}", process::id()));
+        let path = temp_path(name);
         fs::write(&path, content).unwrap();
 
         Self { path }
@@ -31,4 +28,32 @@ impl Drop for TempFile {
     fn drop(&mut self) {
         let _ = fs::remove_file(&self.path);
     }
+}
+
+/// A directory in the temp directory, removed with what it holds when dropped
+pub struct TempDir {
+    pub path: PathBuf,
+}
+
+impl TempDir {
+    pub fn new(name: &str) -> Self {
+        let path = temp_path(name);
+        fs::create_dir(&path).unwrap();
+
+        Self { path }
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
+
+/// The name is for finding a file left behind, a number keeps the paths of tests apart
+fn temp_path(name: &str) -> PathBuf {
+    static COUNT: AtomicUsize = AtomicUsize::new(0);
+    let number = COUNT.fetch_add(1, Ordering::Relaxed);
+
+    env::temp_dir().join(format!("istoria-test-{name}-{}-{number}", process::id()))
 }

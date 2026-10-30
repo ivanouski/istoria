@@ -2,21 +2,31 @@
 
 use std::ffi::OsString;
 
-use crate::config;
+use crate::{backup, config};
 
 const USAGE: &str = "\
-Usage: istoria [OPTIONS] [QUERY]
+Usage: istoria COMMAND [ARGS]
 
-Search bash history in $HISTFILE and print the chosen command. Each word of the
-query matches anywhere in a command, in any order, ignoring case.
+Commands:
+  search [OPTIONS] [QUERY]  search bash history and print the chosen command
+  delete-last [N]           delete the last N commands from history, 1 by default
+  init-config               write the default config, unless it exists
+  backup                    save the commands of $HISTFILE in a backup
+  backup list               list the backups, oldest first
+  backup delete LABEL       delete a backup
 
 Options:
+  -h, --help     print this help
+  -V, --version  print the version
+
+search reads $HISTFILE. Each word of the query matches anywhere in a command, in
+any order, ignoring case.
+
+Search options:
   --print-query      on Esc, print the query and exit with 3
   --prompt TEXT      show TEXT, the shell prompt as bash prints it, instead of ›
-  --delete-last [N]  delete the last N commands from history, 1 by default
-  --init-config      write the default config, unless it exists
-  -h, --help         print this help
-  -V, --version      print the version
+  --backup           search every backup instead of $HISTFILE
+  --backup-id LABEL  search the backup LABEL instead, like 20261030-142501
 
 Keys:
   Up, Down, Ctrl-P, Ctrl-N  move the selection
@@ -36,7 +46,11 @@ Keys:
   Ctrl-C                    quit, exit with 130
 
 Without matches, Enter and Tab quit like Esc. With the list above the prompt
-line, Up, Ctrl-P and PgUp move to older commands.
+line, Up, Ctrl-P and PgUp move to older commands. Ctrl-D leaves backups as they
+are.
+
+Backups: $XDG_DATA_HOME/istoria/history.db, labeled by when they started, in
+local time.
 
 Config: $XDG_CONFIG_HOME/istoria/config.toml, defaults:
 
@@ -45,36 +59,73 @@ Config: $XDG_CONFIG_HOME/istoria/config.toml, defaults:
 Errors exit with 2, signals with 128 + the signal.
 ";
 
-const DELETE_LAST_ALONE: &str = "--delete-last takes no other arguments";
+const DELETE_LAST_ALONE: &str = "delete-last takes no other arguments";
 const PROMPT_TEXT: &str = "--prompt takes the prompt text";
+const BACKUP_LABEL: &str = "--backup-id takes a backup label";
+const ONE_BACKUP_LABEL: &str = "--backup-id takes one backup label";
+const BACKUP_AND_LABEL: &str = "--backup and --backup-id can't be used together";
+const PROMPT_AND_BACKUP: &str = "--prompt can't be used with --backup or --backup-id";
+const DELETE_BACKUP_LABEL: &str = "backup delete takes a backup label";
 
 #[derive(Debug, PartialEq)]
 pub enum Args {
-    Search {
-        query: String,
-        print_query: bool,
-        prompt: Option<String>,
-    },
+    Search(Search),
     DeleteLast(usize),
     InitConfig,
+    Backup,
+    BackupList,
+    /// The label of the backup
+    BackupDelete(String),
     Help,
     Version,
 }
 
+#[derive(Debug, Default, PartialEq)]
+pub struct Search {
+    pub query: String,
+    pub print_query: bool,
+    pub prompt: Option<String>,
+    pub searched: Searched,
+}
+
+/// What search reads the commands from
+#[derive(Debug, Default, PartialEq)]
+pub enum Searched {
+    #[default]
+    History,
+    /// Every backup
+    Backups,
+    /// One backup, by its label
+    Backup(String),
+}
+
 /// The arguments without the program name
 pub fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Args, String> {
-    let mut words = Vec::new();
-    let mut options = true;
-    let mut print_query = false;
-    let mut prompt = None;
-
     let args: Vec<OsString> = args.into_iter().collect();
 
-    if args.first().is_some_and(|arg| arg == "--delete-last") {
-        return parse_delete_last(&args[1..]);
-    }
+    let Some((command, args)) = args.split_first() else {
+        return Ok(Args::Help);
+    };
 
-    let mut args = args.into_iter();
+    let command = command.to_string_lossy();
+
+    match command.as_ref() {
+        "search" => parse_search(args),
+        "delete-last" => parse_delete_last(args),
+        "init-config" => parse_alone(args, Args::InitConfig, "init-config"),
+        "backup" => parse_backup(args),
+        _ => unknown(&command, "command"),
+    }
+}
+
+/// The arguments after `search`, options and query words in any order
+fn parse_search(args: &[OsString]) -> Result<Args, String> {
+    let mut words = Vec::new();
+    let mut options = true;
+    let mut search = Search::default();
+    let mut backups = false;
+    let mut label = None;
+    let mut args = args.iter();
 
     while let Some(arg) = args.next() {
         // A query with its invalid bytes replaced would change the line bash gets back
@@ -86,16 +137,23 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Args, Stri
             "--" if options => options = false,
             "-h" | "--help" if options => return Ok(Args::Help),
             "-V" | "--version" if options => return Ok(Args::Version),
-            "--init-config" if options => return Ok(Args::InitConfig),
-            "--print-query" if options => print_query = true,
+            "--print-query" if options => search.print_query = true,
             // Taken as is, a prompt may start with a dash. It is only shown, so invalid bytes
             // become replacement characters.
             "--prompt" if options => match args.next() {
-                Some(text) => prompt = Some(text.to_string_lossy().into_owned()),
+                Some(text) => search.prompt = Some(text.to_string_lossy().into_owned()),
                 None => return Err(usage_error(PROMPT_TEXT)),
             },
-            "--delete-last" if options => {
-                return Err(usage_error(DELETE_LAST_ALONE));
+            "--backup" if options => backups = true,
+            "--backup-id" if options => {
+                if label.is_some() {
+                    return Err(usage_error(ONE_BACKUP_LABEL));
+                }
+
+                match args.next() {
+                    Some(text) => label = Some(parse_label(&text.to_string_lossy())?),
+                    None => return Err(usage_error(BACKUP_LABEL)),
+                }
             }
             option if options && option.starts_with('-') && option.len() > 1 => {
                 return Err(usage_error(&format!("invalid option: {option}")));
@@ -104,22 +162,93 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Args, Stri
         }
     }
 
-    Ok(Args::Search {
-        query: words.join(" "),
-        print_query,
-        prompt,
-    })
+    search.query = words.join(" ");
+    search.searched = match (backups, label) {
+        (false, None) => Searched::History,
+        (true, None) => Searched::Backups,
+        (false, Some(label)) => Searched::Backup(label),
+        (true, Some(_)) => return Err(usage_error(BACKUP_AND_LABEL)),
+    };
+
+    if search.prompt.is_some() && search.searched != Searched::History {
+        return Err(usage_error(PROMPT_AND_BACKUP));
+    }
+
+    Ok(Args::Search(search))
 }
 
-/// The arguments after `--delete-last`, which takes nothing but a count
+/// The arguments after `delete-last`, which takes nothing but a count
 fn parse_delete_last(args: &[OsString]) -> Result<Args, String> {
     match args {
         [] => Ok(Args::DeleteLast(1)),
-        // Asked for as anywhere else, not taken for a count
-        [help] if help == "-h" || help == "--help" => Ok(Args::Help),
-        [version] if version == "-V" || version == "--version" => Ok(Args::Version),
-        [count] => parse_count(&count.to_string_lossy()).map(Args::DeleteLast),
+        [arg] => parse_one(arg, |count| parse_count(count).map(Args::DeleteLast)),
         _ => Err(usage_error(DELETE_LAST_ALONE)),
+    }
+}
+
+/// The arguments after `backup`: nothing, or `list` or `delete` and theirs
+fn parse_backup(args: &[OsString]) -> Result<Args, String> {
+    let Some((command, args)) = args.split_first() else {
+        return Ok(Args::Backup);
+    };
+
+    let command = command.to_string_lossy();
+
+    match command.as_ref() {
+        "list" => parse_alone(args, Args::BackupList, "backup list"),
+        "delete" => match args {
+            [arg] => parse_one(arg, |label| parse_label(label).map(Args::BackupDelete)),
+            _ => Err(usage_error(DELETE_BACKUP_LABEL)),
+        },
+        _ => unknown(&command, "backup command"),
+    }
+}
+
+/// The arguments after a command that takes none
+fn parse_alone(args: &[OsString], parsed: Args, command: &str) -> Result<Args, String> {
+    match args {
+        [] => Ok(parsed),
+        [arg] => parse_one(arg, |_| Err(no_arguments(command))),
+        _ => Err(no_arguments(command)),
+    }
+}
+
+fn no_arguments(command: &str) -> String {
+    usage_error(&format!("{command} takes no arguments"))
+}
+
+/// The only argument of a command: help or version, else what parse makes of it
+fn parse_one(
+    arg: &OsString,
+    parse: impl FnOnce(&str) -> Result<Args, String>,
+) -> Result<Args, String> {
+    let arg = arg.to_string_lossy();
+
+    exit_option(&arg).map_or_else(|| parse(&arg), Ok)
+}
+
+/// Help and version in place of a command, else an invalid option or command
+fn unknown(word: &str, kind: &str) -> Result<Args, String> {
+    match exit_option(word) {
+        Some(exit) => Ok(exit),
+        None if word.starts_with('-') => Err(usage_error(&format!("invalid option: {word}"))),
+        None => Err(usage_error(&format!("invalid {kind}: {word}"))),
+    }
+}
+
+/// Help and version, which every command takes
+fn exit_option(arg: &str) -> Option<Args> {
+    match arg {
+        "-h" | "--help" => Some(Args::Help),
+        "-V" | "--version" => Some(Args::Version),
+        _ => None,
+    }
+}
+
+fn parse_label(label: &str) -> Result<String, String> {
+    match backup::parse_label(label) {
+        Some(_) => Ok(label.to_string()),
+        None => Err(usage_error(&format!("invalid backup label: {label}"))),
     }
 }
 
@@ -153,6 +282,8 @@ mod tests {
 
     use super::*;
 
+    const LABEL: &str = "20261030-142501";
+
     fn parse(args: &[&str]) -> Result<Args, String> {
         parse_args(args.iter().map(OsString::from))
     }
@@ -162,23 +293,49 @@ mod tests {
     }
 
     fn search(query: &str, print_query: bool) -> Args {
-        Args::Search {
+        Args::Search(Search {
             query: query.to_string(),
             print_query,
-            prompt: None,
-        }
+            ..Search::default()
+        })
+    }
+
+    fn search_in(searched: Searched, query: &str) -> Args {
+        Args::Search(Search {
+            query: query.to_string(),
+            searched,
+            ..Search::default()
+        })
+    }
+
+    fn error(args: &[&str]) -> String {
+        let error = parse(args).unwrap_err();
+        assert!(
+            error.ends_with("\nTry 'istoria --help' for usage."),
+            "{error}"
+        );
+
+        error.lines().next().unwrap().to_string()
+    }
+
+    #[test]
+    fn shows_help_without_a_command() {
+        assert_eq!(parse(&[]), Ok(Args::Help));
     }
 
     #[test]
     fn joins_the_words_into_the_query() {
-        assert_eq!(parse(&[]), Ok(search("", false)));
-        assert_eq!(parse(&["git", "log"]), Ok(search("git log", false)));
+        assert_eq!(parse(&["search"]), Ok(search("", false)));
+        assert_eq!(
+            parse(&["search", "git", "log"]),
+            Ok(search("git log", false))
+        );
     }
 
     #[test]
     fn reads_options_between_the_words() {
         assert_eq!(
-            parse(&["git", "--print-query", "log"]),
+            parse(&["search", "git", "--print-query", "log"]),
             Ok(search("git log", true))
         );
     }
@@ -186,105 +343,212 @@ mod tests {
     #[test]
     fn takes_the_next_argument_for_the_prompt() {
         assert_eq!(
-            parse(&["--prompt", "-$ ", "--print-query", "--", "git"]),
-            Ok(Args::Search {
+            parse(&["search", "--prompt", "-$ ", "--print-query", "--", "git"]),
+            Ok(Args::Search(Search {
                 query: "git".to_string(),
                 print_query: true,
                 prompt: Some("-$ ".to_string()),
-            })
+                searched: Searched::History,
+            }))
         );
     }
 
     #[test]
     fn replaces_invalid_bytes_in_the_prompt() {
-        let args = [OsString::from("--prompt"), invalid_utf8(b"\xff$ ")];
+        let args = [
+            OsString::from("search"),
+            OsString::from("--prompt"),
+            invalid_utf8(b"\xff$ "),
+        ];
 
         assert_eq!(
             parse_args(args),
-            Ok(Args::Search {
-                query: String::new(),
-                print_query: false,
+            Ok(Args::Search(Search {
                 prompt: Some("\u{fffd}$ ".to_string()),
-            })
+                ..Search::default()
+            }))
         );
     }
 
     #[test]
     fn rejects_invalid_bytes_in_the_query() {
         assert_eq!(
-            parse_args([invalid_utf8(b"ls \xff")]),
+            parse_args([OsString::from("search"), invalid_utf8(b"ls \xff")]),
             Err("not valid UTF-8: ls \u{fffd}".to_string())
         );
     }
 
     #[test]
     fn rejects_a_prompt_option_without_the_text() {
-        assert!(parse(&["--prompt"]).unwrap_err().starts_with(PROMPT_TEXT));
+        assert_eq!(error(&["search", "--prompt"]), PROMPT_TEXT);
     }
 
     #[test]
     fn takes_everything_after_a_double_dash_for_the_query() {
         assert_eq!(
-            parse(&["--", "--help", "-x", "--delete-last"]),
-            Ok(search("--help -x --delete-last", false))
+            parse(&["search", "--", "--help", "-x", "--backup"]),
+            Ok(search("--help -x --backup", false))
         );
     }
 
     #[test]
     fn takes_a_lone_dash_for_the_query() {
-        assert_eq!(parse(&["cd", "-"]), Ok(search("cd -", false)));
+        assert_eq!(parse(&["search", "cd", "-"]), Ok(search("cd -", false)));
     }
 
     #[test]
-    fn reads_help_version_and_init_config_anywhere() {
-        assert_eq!(parse(&["ls", "--help"]), Ok(Args::Help));
+    fn takes_command_names_after_search_for_the_query() {
+        assert_eq!(
+            parse(&["search", "backup", "list"]),
+            Ok(search("backup list", false))
+        );
+    }
+
+    #[test]
+    fn reads_help_and_version_anywhere_in_a_search() {
+        assert_eq!(parse(&["search", "ls", "--help"]), Ok(Args::Help));
+        assert_eq!(parse(&["search", "-h"]), Ok(Args::Help));
+        assert_eq!(parse(&["search", "ls", "-V"]), Ok(Args::Version));
+        assert_eq!(parse(&["search", "--version"]), Ok(Args::Version));
+    }
+
+    #[test]
+    fn reads_help_and_version_in_place_of_a_command() {
         assert_eq!(parse(&["-h"]), Ok(Args::Help));
-        assert_eq!(parse(&["ls", "-V"]), Ok(Args::Version));
+        assert_eq!(parse(&["--help", "search"]), Ok(Args::Help));
+        assert_eq!(parse(&["-V"]), Ok(Args::Version));
         assert_eq!(parse(&["--version"]), Ok(Args::Version));
-        assert_eq!(parse(&["ls", "--init-config"]), Ok(Args::InitConfig));
     }
 
     #[test]
-    fn rejects_unknown_options() {
-        let error = parse(&["-x"]).unwrap_err();
+    fn rejects_unknown_commands_and_options() {
+        assert_eq!(error(&["git"]), "invalid command: git");
+        assert_eq!(error(&["-x"]), "invalid option: -x");
+        assert_eq!(error(&["--print-query"]), "invalid option: --print-query");
+        assert_eq!(error(&["search", "-x"]), "invalid option: -x");
+    }
 
-        assert!(error.starts_with("invalid option: -x\n"));
-        assert!(error.ends_with("Try 'istoria --help' for usage."));
+    #[test]
+    fn rejects_the_options_of_old_versions() {
+        assert_eq!(error(&["--delete-last"]), "invalid option: --delete-last");
+        assert_eq!(error(&["--init-config"]), "invalid option: --init-config");
+        assert_eq!(
+            error(&["search", "--delete-last"]),
+            "invalid option: --delete-last"
+        );
     }
 
     #[test]
     fn deletes_one_command_by_default() {
-        assert_eq!(parse(&["--delete-last"]), Ok(Args::DeleteLast(1)));
-        assert_eq!(parse(&["--delete-last", "10"]), Ok(Args::DeleteLast(10)));
+        assert_eq!(parse(&["delete-last"]), Ok(Args::DeleteLast(1)));
+        assert_eq!(parse(&["delete-last", "10"]), Ok(Args::DeleteLast(10)));
     }
 
     #[test]
-    fn shows_help_and_version_after_delete_last() {
-        for help in ["-h", "--help"] {
-            assert_eq!(parse(&["--delete-last", help]), Ok(Args::Help));
-        }
-        for version in ["-V", "--version"] {
-            assert_eq!(parse(&["--delete-last", version]), Ok(Args::Version));
+    fn shows_help_and_version_after_commands() {
+        for command in [
+            &["delete-last"][..],
+            &["init-config"],
+            &["backup"],
+            &["backup", "list"],
+            &["backup", "delete"],
+        ] {
+            for help in ["-h", "--help"] {
+                assert_eq!(parse(&[command, &[help]].concat()), Ok(Args::Help));
+            }
+            for version in ["-V", "--version"] {
+                assert_eq!(parse(&[command, &[version]].concat()), Ok(Args::Version));
+            }
         }
     }
 
     #[test]
     fn rejects_delete_last_with_other_arguments() {
-        for args in [
-            &["--delete-last", "1", "2"][..],
-            &["ls", "--delete-last"],
-            &["--print-query", "--delete-last"],
-        ] {
-            assert!(parse(args).unwrap_err().starts_with(DELETE_LAST_ALONE));
-        }
+        assert_eq!(error(&["delete-last", "1", "2"]), DELETE_LAST_ALONE);
     }
 
     #[test]
     fn rejects_counts_other_than_positive_numbers() {
         for count in ["0", "-1", "+1", "1x", "", "--print-query"] {
-            let error = parse(&["--delete-last", count]).unwrap_err();
-
-            assert!(error.starts_with(&format!("invalid count: {count}\n")));
+            assert_eq!(
+                error(&["delete-last", count]),
+                format!("invalid count: {count}")
+            );
         }
+    }
+
+    #[test]
+    fn writes_the_config_without_arguments() {
+        assert_eq!(parse(&["init-config"]), Ok(Args::InitConfig));
+        assert_eq!(
+            error(&["init-config", "x"]),
+            "init-config takes no arguments"
+        );
+    }
+
+    #[test]
+    fn reads_the_backup_commands() {
+        assert_eq!(parse(&["backup"]), Ok(Args::Backup));
+        assert_eq!(parse(&["backup", "list"]), Ok(Args::BackupList));
+        assert_eq!(
+            parse(&["backup", "delete", LABEL]),
+            Ok(Args::BackupDelete(LABEL.to_string()))
+        );
+    }
+
+    #[test]
+    fn rejects_backup_commands_with_wrong_arguments() {
+        assert_eq!(error(&["backup", "x"]), "invalid backup command: x");
+        assert_eq!(error(&["backup", "-x"]), "invalid option: -x");
+        assert_eq!(
+            error(&["backup", "list", "x"]),
+            "backup list takes no arguments"
+        );
+        assert_eq!(error(&["backup", "delete"]), DELETE_BACKUP_LABEL);
+        assert_eq!(
+            error(&["backup", "delete", LABEL, LABEL]),
+            DELETE_BACKUP_LABEL
+        );
+        assert_eq!(
+            error(&["backup", "delete", "2026"]),
+            "invalid backup label: 2026"
+        );
+    }
+
+    #[test]
+    fn searches_the_backups() {
+        assert_eq!(
+            parse(&["search", "--backup", "git"]),
+            Ok(search_in(Searched::Backups, "git"))
+        );
+        assert_eq!(
+            parse(&["search", "git", "--backup-id", LABEL]),
+            Ok(search_in(Searched::Backup(LABEL.to_string()), "git"))
+        );
+    }
+
+    #[test]
+    fn rejects_backup_options_that_go_apart() {
+        assert_eq!(error(&["search", "--backup-id"]), BACKUP_LABEL);
+        assert_eq!(
+            error(&["search", "--backup-id", "x"]),
+            "invalid backup label: x"
+        );
+        assert_eq!(
+            error(&["search", "--backup-id", LABEL, "--backup-id", LABEL]),
+            ONE_BACKUP_LABEL
+        );
+        assert_eq!(
+            error(&["search", "--backup", "--backup-id", LABEL]),
+            BACKUP_AND_LABEL
+        );
+        assert_eq!(
+            error(&["search", "--prompt", "$ ", "--backup"]),
+            PROMPT_AND_BACKUP
+        );
+        assert_eq!(
+            error(&["search", "--backup-id", LABEL, "--prompt", "$ "]),
+            PROMPT_AND_BACKUP
+        );
     }
 }

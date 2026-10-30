@@ -18,8 +18,8 @@ or later:
 [[ -f ~/.istoriarc ]] && . ~/.istoriarc
 ```
 
-Optionally, install the completion of the options, which bash-completion loads on demand (without
-it, source the file in `~/.bashrc`):
+Optionally, install the completion of the commands, options and backup labels, which
+bash-completion loads on demand (without it, source the file in `~/.bashrc`):
 
 ```bash
 cp completions/_istoria ~/.local/share/bash-completion/completions/istoria
@@ -27,18 +27,15 @@ cp completions/_istoria ~/.local/share/bash-completion/completions/istoria
 
 ## Bash history
 
-istoria reads and edits the history file, `$HISTFILE`. Deleting needs two settings in `~/.bashrc`:
+istoria reads and edits the history file, `$HISTFILE`. Deleting needs this setting in `~/.bashrc`:
 
 ```bash
 # Save each command at the prompt and reload the file
 PROMPT_COMMAND="history -a; history -c; history -r${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
-# Keep istoria --delete-last out of the history, add a pattern for an alias of it too
-HISTIGNORE="${HISTIGNORE:+$HISTIGNORE:}istoria --delete-last*"
 ```
 
 Bash saves commands to the file only on exit. `history -a` at each prompt saves them as they run, so
-`--delete-last` deletes the right ones, and `HISTIGNORE` keeps it from deleting itself next time.
-Reloading with `history -c; history -r` drops deleted commands from the shell's copy, which Ctrl-P,
+`delete-last` deletes the right ones. Reloading with `history -c; history -r` drops deleted commands from the shell's copy, which Ctrl-P,
 Ctrl-N, `!!` and `history` use.
 
 Optionally, for the rest of istoria:
@@ -86,14 +83,39 @@ ISTORIA_PROMPT='\[\e[35m\]mon›\[\e[0m\] '
 | Esc                           | quit, keeping the query                  |
 | Ctrl-C                        | quit, leaving the prompt line as it was  |
 
-`istoria --delete-last [N]` deletes the last N commands from history, 1 by default, and prints them.
+`istoria delete-last [N]` deletes the last N commands from history, 1 by default, and prints them.
 It needs the history saved at each prompt, see [Bash history](#bash-history).
 
-`istoria --help` lists all options and exit statuses.
+`istoria --help` lists all commands, options and exit statuses.
+
+## Backups
+
+`istoria backup` saves the commands of `$HISTFILE` in a backup, kept in
+`~/.local/share/istoria/history.db` (or under `$XDG_DATA_HOME`). Each entry, a command and when it
+ran, is stored once, and each backup keeps which ones it saw, so an entry later deleted from history
+or dropped past `HISTFILESIZE` stays in the backups. It prints the backup's label, when it started
+in local time, and how many entries it saw and added:
+
+```console
+$ istoria backup
+20261030-142501  4512 entries, 37 new
+$ istoria backup list
+20261029-090000	mac	4480
+20261030-142501	mac	4512
+$ istoria backup delete 20261029-090000
+```
+
+Commands the shell hasn't saved yet are left out, so run `history -a` first, or save at each prompt,
+see [Bash history](#bash-history).
+
+`istoria search --backup` searches every backup instead of the history, `--backup-id LABEL` one
+backup. The prompt says which, `backup›` or `backup:20261030-142501›`. Enter prints the chosen
+command, and Ctrl-D deletes nothing from backups, nor from history. Deleting from history leaves the
+backups as they are.
 
 ## Config
 
-`istoria --init-config` writes the defaults to `~/.config/istoria/config.toml` (or under
+`istoria init-config` writes the defaults to `~/.config/istoria/config.toml` (or under
 `$XDG_CONFIG_HOME`). Keys left out keep their defaults:
 
 ```toml
@@ -103,6 +125,7 @@ border  = false   # a line on the far edge of the pane
 preview = false   # the selected command in full when its row is cut
 [colors]
 prompt   = { fg = "blue", bold = true }
+backup   = { fg = "magenta", bold = true }  # the prompt searching backups
 count    = "dark-gray"     # matches/commands
 deleted  = "green"         # the status after Ctrl-D
 error    = "red"           # Ctrl-D failed, the count of no matches

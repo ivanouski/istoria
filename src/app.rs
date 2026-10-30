@@ -10,10 +10,42 @@ use ratatui::text::Line;
 use crate::config::{Config, ListPosition};
 use crate::context::Context;
 use crate::finder::Finder;
-use crate::history::History;
+use crate::history::{Entry, History};
 use crate::pane::Pane;
 use crate::ui::Status;
 use crate::{tty, ui};
+
+const NO_BACKUP_DELETE: &str = "no delete available for backups";
+
+/// Where the commands come from
+pub enum Source {
+    History(History),
+    /// Read only, from one backup with its label or from all of them
+    Backups {
+        entries: Vec<Entry>,
+        label: Option<String>,
+    },
+}
+
+impl Source {
+    pub fn entries(&self) -> &[Entry] {
+        match self {
+            Self::History(history) => history.entries(),
+            Self::Backups { entries, .. } => entries,
+        }
+    }
+
+    /// Shown before ›: `backup`, or `backup:20261030-142501` for one
+    fn prompt_label(&self) -> Option<String> {
+        match self {
+            Self::History(_) => None,
+            Self::Backups { label: None, .. } => Some("backup".to_string()),
+            Self::Backups {
+                label: Some(label), ..
+            } => Some(format!("backup:{label}")),
+        }
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub enum Outcome {
@@ -32,7 +64,7 @@ pub enum Outcome {
 /// Runs the finder until a key or a signal ends it
 pub fn pick(
     finder: &mut Finder,
-    history: &mut History,
+    source: &mut Source,
     config: &Config,
     prompt: Option<&Line>,
 ) -> io::Result<Outcome> {
@@ -42,16 +74,25 @@ pub fn pick(
     let mut status = None;
     let mut page = 1;
     let signal = tty::watch_signals()?;
+    let label = source.prompt_label();
 
     let outcome = loop {
         pane.draw(|frame| {
-            page = ui::draw(frame, finder, config, prompt, status.as_ref(), &mut offset);
+            page = ui::draw(
+                frame,
+                finder,
+                config,
+                prompt,
+                label.as_deref(),
+                status.as_ref(),
+                &mut offset,
+            );
         })?;
 
         match tty::next_event(&signal)? {
             None => break Outcome::Signaled(signal.load(Ordering::Relaxed)),
             Some(Event::Key(key)) if key.kind == KeyEventKind::Press => {
-                match handle_key(key, finder, history, page, list) {
+                match handle_key(key, finder, source, page, list) {
                     Break(outcome) => break outcome,
                     Continue(next_status) => status = next_status,
                 }
@@ -81,7 +122,7 @@ pub fn pick(
 fn handle_key(
     key: KeyEvent,
     finder: &mut Finder,
-    history: &mut History,
+    source: &mut Source,
     page: usize,
     list: ListPosition,
 ) -> ControlFlow<Outcome, Option<Status>> {
@@ -103,7 +144,7 @@ fn handle_key(
                 None => Outcome::Quit,
             });
         }
-        (KeyCode::Char('d'), true) => return Continue(delete(finder, history)),
+        (KeyCode::Char('d'), true) => return Continue(delete(finder, source)),
         (KeyCode::Up, _) | (KeyCode::Char('p'), true) if above => finder.down(),
         (KeyCode::Down, _) | (KeyCode::Char('n'), true) if above => finder.up(),
         (KeyCode::PageUp, _) if above => finder.page_down(page),
@@ -134,9 +175,14 @@ fn handle_key(
     Continue(None)
 }
 
-/// Deletes every occurrence of the selected command
-fn delete(finder: &mut Finder, history: &mut History) -> Option<Status> {
+/// Deletes every occurrence of the selected command from history, backups stay as they are
+fn delete(finder: &mut Finder, source: &mut Source) -> Option<Status> {
     let command = finder.selection()?;
+
+    let Source::History(history) = source else {
+        return Some(Status::Failed(NO_BACKUP_DELETE.to_string()));
+    };
+
     let message = format!("deleted {}", command.text);
     let deleted = history
         .delete(&command.entry_indices)
@@ -171,7 +217,7 @@ mod tests {
     /// The finder on a history file of its own
     struct Session {
         file: TempFile,
-        history: History,
+        source: Source,
         finder: Finder,
         list: ListPosition,
     }
@@ -184,7 +230,7 @@ mod tests {
 
             Self {
                 file,
-                history,
+                source: Source::History(history),
                 finder,
                 list: ListPosition::Below,
             }
@@ -198,7 +244,7 @@ mod tests {
             handle_key(
                 KeyEvent::new(code, modifiers),
                 &mut self.finder,
-                &mut self.history,
+                &mut self.source,
                 PAGE,
                 self.list,
             )
@@ -407,6 +453,22 @@ mod tests {
         assert_eq!(session.file.read(), "date\n");
         // Reloaded all the same, so the finder shows what the file holds
         assert_eq!(session.finder.selection().unwrap().text, "date");
+    }
+
+    #[test]
+    fn deletes_nothing_from_backups() {
+        let mut session = Session::open("delete-backup");
+        session.source = Source::Backups {
+            entries: Vec::new(),
+            label: None,
+        };
+
+        assert_eq!(
+            session.press(KeyCode::Char('d'), CONTROL),
+            Continue(Some(Status::Failed(NO_BACKUP_DELETE.to_string())))
+        );
+        assert_eq!(session.file.read(), HISTORY);
+        assert_eq!(session.finder.selection().unwrap().text, "echo");
     }
 
     #[test]

@@ -15,7 +15,7 @@ class IstoriaTerminalTest < IstoriaTestCase
   end
 
   def test_opens_below_text_on_the_cursor_line_and_returns_to_it
-    start(command: ['sh', '-c', %(printf 'PROMPT$ '; exec "$0" "$@"), ISTORIA, 'clau'])
+    start(command: ['sh', '-c', %(printf 'PROMPT$ '; exec "$0" "$@"), ISTORIA, 'search', 'clau'])
 
     assert_equal 'PROMPT$', @session.screen[0]
     assert_equal ['› clau', 'Claude', 'claude --resume', 'sbx run claude (3)', 'sbx build claude'], pane
@@ -44,7 +44,7 @@ class IstoriaTerminalTest < IstoriaTestCase
   end
 
   def test_closes_the_pane_when_its_shell_is_gone
-    start(command: ['sh', '-c', %q(sh -c '"$0" "$@"; :' "$0" "$@"; sleep 5), ISTORIA, 'clau'])
+    start(command: ['sh', '-c', %q(sh -c '"$0" "$@"; :' "$0" "$@"; sleep 5), ISTORIA, 'search', 'clau'])
     shell = Integer(`pgrep -P #{@session.pid} -x sh`)
 
     Process.kill('KILL', shell)

@@ -129,7 +129,7 @@ class IstoriaPickingTest < IstoriaTestCase
 
   def test_keeps_trailing_whitespace_in_the_query
     output = File.join(@tmp_dir, 'output')
-    start(command: ['sh', '-c', %("$0" "$@" > "#{output}"), ISTORIA, '--print-query', 'sbx  '])
+    start(command: ['sh', '-c', %("$0" "$@" > "#{output}"), ISTORIA, 'search', '--print-query', 'sbx  '])
 
     @session.press(:escape)
 
@@ -140,7 +140,7 @@ class IstoriaPickingTest < IstoriaTestCase
   def test_prints_an_empty_query
     File.write(@history, "ls\n")
     output = File.join(@tmp_dir, 'output')
-    start(command: ['sh', '-c', %("$0" "$@" > "#{output}"), ISTORIA, '--print-query', 'l'])
+    start(command: ['sh', '-c', %("$0" "$@" > "#{output}"), ISTORIA, 'search', '--print-query', 'l'])
 
     @session.press(:backspace, :escape)
 
@@ -164,7 +164,7 @@ class IstoriaPickingTest < IstoriaTestCase
 
   def test_prints_to_captured_stdout
     output = File.join(@tmp_dir, 'output')
-    start(command: ['sh', '-c', %("$0" "$@" > "#{output}"), ISTORIA, 'clau'])
+    start(command: ['sh', '-c', %("$0" "$@" > "#{output}"), ISTORIA, 'search', 'clau'])
 
     @session.press(:down, :enter)
 

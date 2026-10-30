@@ -49,7 +49,7 @@ class IstoriaConfigTest < IstoriaTestCase
 
   def test_fails_on_a_height_without_a_row_for_the_list
     write_config("height = 2\n")
-    _, stderr, status = run_istoria('ls')
+    _, stderr, status = run_istoria('search', 'ls')
 
     assert_equal 2, status.exitstatus
     assert_includes stderr, 'height must be at least 3'
@@ -64,7 +64,7 @@ class IstoriaConfigTest < IstoriaTestCase
 
   def test_fails_on_a_broken_config
     write_config(%([colors]\nmatch = "yelow"\n))
-    _, stderr, status = run_istoria('ls')
+    _, stderr, status = run_istoria('search', 'ls')
 
     assert_equal 2, status.exitstatus
     assert_match(%r{\Aistoria: #{Regexp.escape(config_home)}/istoria/config.toml: TOML parse error at line 2}, stderr)
@@ -73,7 +73,7 @@ class IstoriaConfigTest < IstoriaTestCase
 
   def test_fails_on_an_unknown_key
     write_config(%([colors]\nmatched = "red"\n))
-    _, stderr, status = run_istoria('ls')
+    _, stderr, status = run_istoria('search', 'ls')
 
     assert_equal 2, status.exitstatus
     assert_includes stderr, 'unknown field `matched`'
@@ -81,7 +81,7 @@ class IstoriaConfigTest < IstoriaTestCase
 
   def test_init_config_writes_the_defaults_from_help
     path = File.join(config_home, 'istoria', 'config.toml')
-    stdout, stderr, status = run_istoria('--init-config')
+    stdout, stderr, status = run_istoria('init-config')
     help, = run_istoria('--help')
     defaults = help[/^    height.*\n(?:    .*\n)+/].gsub(/^    /, '')
 
@@ -93,7 +93,7 @@ class IstoriaConfigTest < IstoriaTestCase
   def test_init_config_keeps_an_existing_config
     write_config('broken')
     path = File.join(config_home, 'istoria', 'config.toml')
-    stdout, stderr, status = run_istoria('--init-config')
+    stdout, stderr, status = run_istoria('init-config')
 
     assert_equal 2, status.exitstatus
     assert_empty stdout
@@ -102,7 +102,7 @@ class IstoriaConfigTest < IstoriaTestCase
   end
 
   def test_init_config_falls_back_to_home
-    stdout, _, status = run_istoria('--init-config', env: { 'XDG_CONFIG_HOME' => nil, 'HOME' => @tmp_dir })
+    stdout, _, status = run_istoria('init-config', env: { 'XDG_CONFIG_HOME' => nil, 'HOME' => @tmp_dir })
 
     assert status.success?
     assert_equal "#{File.join(@tmp_dir, '.config', 'istoria', 'config.toml')}\n", stdout
@@ -112,14 +112,14 @@ class IstoriaConfigTest < IstoriaTestCase
     write_config(%([colors]\nselected = { bg = "21" }\n), home: File.join(@tmp_dir, '.config'))
     write_config('broken', home: File.join(@tmp_dir, 'relative'))
     start('cd', env: { 'XDG_CONFIG_HOME' => 'relative', 'HOME' => @tmp_dir },
-                command: ['sh', '-c', %(cd "#{@tmp_dir}" && exec "$0" cd), ISTORIA])
+                command: ['sh', '-c', %(cd "#{@tmp_dir}" && exec "$0" search cd), ISTORIA])
 
     assert_color '48;5;21'
   end
 
   def test_init_config_ignores_a_relative_config_home
     stdout, _, status = Open3.capture3({ 'HISTFILE' => @history, 'XDG_CONFIG_HOME' => 'relative', 'HOME' => @tmp_dir },
-                                       ISTORIA, '--init-config', chdir: @tmp_dir)
+                                       ISTORIA, 'init-config', chdir: @tmp_dir)
 
     assert status.success?
     assert_equal "#{File.join(@tmp_dir, '.config', 'istoria', 'config.toml')}\n", stdout
@@ -129,7 +129,7 @@ class IstoriaConfigTest < IstoriaTestCase
   def test_init_config_leaves_no_half_written_config
     path = File.join(config_home, 'istoria', 'config.toml')
     _, stderr, status = Open3.capture3(
-      { 'XDG_CONFIG_HOME' => config_home }, 'sh', '-c', %(trap '' XFSZ; ulimit -f 0; exec "$0" --init-config), ISTORIA
+      { 'XDG_CONFIG_HOME' => config_home }, 'sh', '-c', %(trap '' XFSZ; ulimit -f 0; exec "$0" init-config), ISTORIA
     )
 
     assert_equal 2, status.exitstatus
@@ -138,7 +138,7 @@ class IstoriaConfigTest < IstoriaTestCase
   end
 
   def test_init_config_fails_on_a_closed_stdout
-    stderr, status = run_istoria_into_a_closed_pipe('--init-config')
+    stderr, status = run_istoria_into_a_closed_pipe('init-config')
 
     assert_equal 2, status.exitstatus
     assert_equal "istoria: cannot print: Broken pipe (os error 32)\n", stderr
@@ -146,7 +146,7 @@ class IstoriaConfigTest < IstoriaTestCase
   end
 
   def test_starts_with_the_written_config
-    run_istoria('--init-config')
+    run_istoria('init-config')
     start('cd')
 
     assert_color '48;5;238'

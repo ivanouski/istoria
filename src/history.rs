@@ -20,6 +20,18 @@ pub struct Entry {
     bytes: Range<usize>,
 }
 
+impl Entry {
+    /// An entry from elsewhere than the file, like a backup, which can't be deleted from it
+    pub fn new(original: String, time: Option<i64>) -> Self {
+        Self {
+            text: printable(&original),
+            original,
+            time,
+            bytes: 0..0,
+        }
+    }
+}
+
 pub struct History {
     path: PathBuf,
     content: Vec<u8>,

@@ -25,7 +25,7 @@ __istoria_search() {
 
   history -a
   # HISTFILE isn't exported by default
-  line=$(HISTFILE=${HISTFILE} istoria "${options[@]}" -- "${READLINE_LINE}")
+  line=$(HISTFILE=${HISTFILE} istoria search "${options[@]}" -- "${READLINE_LINE}")
   status=$?
 
   # 0: picked command, 3: query left with Esc, 4: command to edit; anything else keeps the line

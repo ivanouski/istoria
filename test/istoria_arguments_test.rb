@@ -8,7 +8,15 @@ class IstoriaArgumentsTest < IstoriaTestCase
 
     assert status.success?
     assert_empty stderr
-    assert_match(/\AUsage: istoria \[OPTIONS\] \[QUERY\]$/, stdout)
+    assert_match(/\AUsage: istoria COMMAND \[ARGS\]$/, stdout)
+  end
+
+  def test_prints_help_without_a_command
+    stdout, stderr, status = run_istoria
+
+    assert status.success?
+    assert_empty stderr
+    assert_equal run_istoria('--help').first, stdout
   end
 
   def test_prints_the_version
@@ -40,7 +48,7 @@ class IstoriaArgumentsTest < IstoriaTestCase
   end
 
   def test_rejects_unknown_option
-    _, stderr, status = run_istoria('-x')
+    _, stderr, status = run_istoria('search', '-x')
 
     assert_equal 2, status.exitstatus
     assert_equal "istoria: invalid option: -x\nTry 'istoria --help' for usage.\n", stderr
@@ -60,7 +68,7 @@ class IstoriaArgumentsTest < IstoriaTestCase
   end
 
   def test_fails_on_a_missing_history_file
-    _, stderr, status = run_istoria('ls', env: { 'HISTFILE' => File.join(@tmp_dir, 'missing') })
+    _, stderr, status = run_istoria('search', 'ls', env: { 'HISTFILE' => File.join(@tmp_dir, 'missing') })
 
     assert_equal 2, status.exitstatus
     assert_match(/\Aistoria: cannot read .*missing: No such file or directory/, stderr)

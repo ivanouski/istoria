@@ -32,13 +32,14 @@ pub enum Status {
     Failed(String),
 }
 
-/// Returns the list's rows, the page for PgUp and PgDn. The offset, the first match in view, is
-/// kept between draws.
+/// Returns the list's rows, the page for PgUp and PgDn. The label, like `backup`, goes before › in
+/// place of the shell prompt. The offset, the first match in view, is kept between draws.
 pub fn draw(
     frame: &mut Frame,
     finder: &Finder,
     config: &Config,
     prompt: Option<&Line>,
+    label: Option<&str>,
     status: Option<&Status>,
     offset: &mut usize,
 ) -> usize {
@@ -57,7 +58,7 @@ pub fn draw(
         .unwrap_or_default();
     let (list_area, preview_area) = split_preview(body, preview.len(), list);
 
-    draw_prompt_line(frame, prompt_area, shell_prompt, finder, theme);
+    draw_prompt_line(frame, prompt_area, shell_prompt, label, finder, theme);
     draw_divider(frame, divider_area, finder, theme, status);
     let height = draw_list(frame, list_area, finder, &layout, theme, list, offset);
     frame.render_widget(Paragraph::new(preview), preview_area);
@@ -200,12 +201,14 @@ fn draw_prompt_line(
     frame: &mut Frame,
     area: Rect,
     shell_prompt: Option<&Line>,
+    label: Option<&str>,
     finder: &Finder,
     theme: &Theme,
 ) {
-    let mut line = shell_prompt
-        .cloned()
-        .unwrap_or_else(|| Line::from(Span::styled("› ", theme.prompt)));
+    let mut line = shell_prompt.cloned().unwrap_or_else(|| match label {
+        Some(label) => Line::from(Span::styled(format!("{label}› "), theme.backup)),
+        None => Line::from(Span::styled("› ", theme.prompt)),
+    });
     let prompt_width = line.width();
     let room = usize::from(area.width).saturating_sub(prompt_width);
     let (query, column) = scroll(finder.query(), finder.cursor(), room);
@@ -640,6 +643,7 @@ mod tests {
         finder: &'a Finder,
         theme: Theme,
         prompt: Option<&'a str>,
+        label: Option<&'a str>,
         status: Option<Status>,
         list: ListPosition,
         border: bool,
@@ -662,6 +666,7 @@ mod tests {
                 finder,
                 theme: Theme::default(),
                 prompt: None,
+                label: None,
                 status: None,
                 list: ListPosition::Below,
                 border: false,
@@ -679,6 +684,13 @@ mod tests {
         fn prompt(self, prompt: &'a str) -> Self {
             Self {
                 prompt: Some(prompt),
+                ..self
+            }
+        }
+
+        fn label(self, label: &'a str) -> Self {
+            Self {
+                label: Some(label),
                 ..self
             }
         }
@@ -742,6 +754,7 @@ mod tests {
                         self.finder,
                         &config,
                         prompt.as_ref(),
+                        self.label,
                         self.status.as_ref(),
                         &mut offset,
                     );
@@ -893,6 +906,26 @@ mod tests {
             first_command_column(&buffer)
         );
         assert_eq!(first_command_column(&buffer), 2 + TIME_COLUMN);
+    }
+
+    #[test]
+    fn shows_the_label_before_the_query_in_its_color() {
+        let theme = Theme {
+            backup: Style::new().fg(Color::Magenta),
+            ..Theme::default()
+        };
+        let rendered = Render::new(&finder("ls\n"))
+            .label("backup:20261030-142501")
+            .theme(theme)
+            .run();
+
+        assert_eq!(
+            text(&rendered.buffer, 0).trim_end(),
+            "backup:20261030-142501› ls"
+        );
+        assert_eq!(rendered.buffer[(0, 0)].fg, Color::Magenta);
+        assert_eq!(rendered.buffer[(24, 0)].fg, Color::Reset);
+        assert_eq!(rendered.cursor, Position::new(26, 0));
     }
 
     #[test]

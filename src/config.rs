@@ -20,6 +20,7 @@ border  = false   # a line on the far edge of the pane
 preview = false   # the selected command in full when its row is cut
 [colors]
 prompt   = { fg = "blue", bold = true }
+backup   = { fg = "magenta", bold = true }  # the prompt searching backups
 count    = "dark-gray"     # matches/commands
 deleted  = "green"         # the status after Ctrl-D
 error    = "red"           # Ctrl-D failed, the count of no matches
@@ -72,6 +73,9 @@ impl Default for Config {
 pub struct Theme {
     #[serde(deserialize_with = "style")]
     pub prompt: Style,
+    /// The label and › searching backups
+    #[serde(deserialize_with = "style")]
+    pub backup: Style,
     /// The match count in the divider
     #[serde(deserialize_with = "style")]
     pub count: Style,
@@ -94,6 +98,7 @@ impl Default for Theme {
     fn default() -> Self {
         Self {
             prompt: Style::new().fg(Color::Blue).bold(),
+            backup: Style::new().fg(Color::Magenta).bold(),
             count: Style::new().fg(Color::DarkGray),
             deleted: Style::new().fg(Color::Green),
             error: Style::new().fg(Color::Red),

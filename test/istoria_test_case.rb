@@ -45,12 +45,12 @@ class IstoriaTestCase < Minitest::Test
 
   DIVIDER_ROW = 1
   FIRST_ROW = 2
-  PANE_DIVIDER = %r{\A─* ?(\d+/\d+|deleted .*|cannot .*) ──\z}
+  PANE_DIVIDER = %r{\A─* ?(\d+/\d+|deleted .*|cannot .*|no delete .*) ──\z}
 
   private
 
-  def start(*query, command: [ISTORIA, *query], history: @history, env: {}, **terminal)
-    env = { 'HISTFILE' => history, 'TZ' => 'UTC', 'XDG_CONFIG_HOME' => config_home }.merge(env)
+  def start(*query, command: [ISTORIA, 'search', *query], history: @history, env: {}, **terminal)
+    env = istoria_env(HISTFILE: history).merge(env)
     @session = TerminalSession.new(command, env:, **terminal)
     wait_for_pane
   end
@@ -69,7 +69,8 @@ class IstoriaTestCase < Minitest::Test
       . #{ISTORIARC}
     BASH
     env = {
-      'PATH' => "#{path}:#{ENV.fetch('PATH')}", 'HOME' => @tmp_dir, 'XDG_CONFIG_HOME' => nil, 'INPUTRC' => File::NULL,
+      'PATH' => "#{path}:#{ENV.fetch('PATH')}", 'HOME' => @tmp_dir, 'XDG_CONFIG_HOME' => nil, 'XDG_DATA_HOME' => nil,
+      'INPUTRC' => File::NULL,
       'TZ' => 'UTC', 'ISTORIA_SHELL_PROMPT' => nil, 'ISTORIA_PROMPT' => nil,
     }
     @session = TerminalSession.new(['bash', '--noprofile', '--rcfile', rc, '-i'], env:)
@@ -100,7 +101,7 @@ class IstoriaTestCase < Minitest::Test
 
   def picked_output(*keys)
     output = File.join(@tmp_dir, 'output')
-    start(command: ['sh', '-c', %("$0" > "#{output}"), ISTORIA])
+    start(command: ['sh', '-c', %("$0" search > "#{output}"), ISTORIA])
     @session.press(*keys)
     @session.wait
     @session = nil
@@ -118,7 +119,7 @@ class IstoriaTestCase < Minitest::Test
   def delete
     before = @session.screen
     @session.press(:ctrl_d)
-    @session.wait_for { |lines| lines != before && lines.any? { |line| line.match?(/ (deleted|cannot) /) } }
+    @session.wait_for { |lines| lines != before && lines.any? { |line| line.match?(/ (deleted|cannot|no delete) /) } }
   end
 
   def assert_picks(*keys, command, status: 0)
@@ -136,7 +137,18 @@ class IstoriaTestCase < Minitest::Test
   end
 
   def run_istoria(*, env: {})
-    Open3.capture3({ 'HISTFILE' => @history, 'XDG_CONFIG_HOME' => config_home }.merge(env), ISTORIA, *)
+    Open3.capture3(istoria_env.merge(env), ISTORIA, *)
+  end
+
+  # Backs up the history, returns the label and the counts. A backup waits for the next second, as
+  # two in one second would have the same label.
+  def back_up
+    sleep(0.05) until Time.now.to_i > @backed_up_at.to_i
+    stdout, stderr, status = run_istoria('backup')
+    @backed_up_at = Time.now.to_i
+
+    assert status.success?, stderr
+    stdout.chomp.split('  ')
   end
 
   # Runs istoria with stdout on a pipe nobody reads, so every write fails with EPIPE
@@ -144,7 +156,7 @@ class IstoriaTestCase < Minitest::Test
     out_reader, out_writer = IO.pipe
     out_reader.close
     err_reader, err_writer = IO.pipe
-    pid = Process.spawn({ 'HISTFILE' => @history, 'XDG_CONFIG_HOME' => config_home }, ISTORIA, *,
+    pid = Process.spawn(istoria_env, ISTORIA, *,
                         out: out_writer, err: err_writer)
     [out_writer, err_writer].each(&:close)
     stderr = err_reader.read
@@ -165,8 +177,19 @@ class IstoriaTestCase < Minitest::Test
     /\e\[(?:[\d;]*;)?#{Regexp.escape(code)}[;m]/
   end
 
+  # The history, the config and backups of the test's own. One time zone, as backup labels are in
+  # local time.
+  def istoria_env(**env)
+    { 'HISTFILE' => @history, 'XDG_CONFIG_HOME' => config_home, 'XDG_DATA_HOME' => data_home, 'TZ' => 'UTC' }
+      .merge(env.transform_keys(&:to_s))
+  end
+
   def config_home
     File.join(@tmp_dir, 'config')
+  end
+
+  def data_home
+    File.join(@tmp_dir, 'data')
   end
 
   def write_config(text, home: config_home)

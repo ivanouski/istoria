@@ -2,42 +2,68 @@
 
 _istoria() {
   local current="${COMP_WORDS[COMP_CWORD]}"
-  local word index print_query="" prompt=""
   local -a candidates=()
 
-  for (( index = 1; index < COMP_CWORD; index++ )); do
+  if (( COMP_CWORD == 1 )); then
+    case "${current}" in
+      --*) candidates=(--help --version) ;;
+      -*) candidates=(-h -V) ;;
+      *) candidates=(search delete-last init-config backup) ;;
+    esac
+  else
+    case "${COMP_WORDS[1]}" in
+      search) _istoria_search ;;
+      backup) _istoria_backup ;;
+    esac
+  fi
+
+  COMPREPLY=( $(compgen -W "${candidates[*]}" -- "${current}") )
+
+  return 0
+}
+
+# The helpers below read current and add to candidates, both local to _istoria
+
+# The options of search not given yet, and backup labels after --backup-id
+_istoria_search() {
+  local word index print_query="" prompt="" backup=""
+
+  for (( index = 2; index < COMP_CWORD; index++ )); do
     word="${COMP_WORDS[index]}"
     case "${word}" in
       # Everything after -- is the query, and these exit before searching
-      --|-h|--help|-V|--version|--init-config|--delete-last)
-        COMPREPLY=()
-        return 0
-        ;;
+      --|-h|--help|-V|--version) return ;;
       --print-query) print_query=1 ;;
-      --prompt)
-        prompt=1
-        # The prompt text is free text, whatever it looks like
+      --backup) backup=1 ;;
+      # Their argument is the next word, whatever it looks like: free text, or a label
+      --prompt|--backup-id)
+        [[ "${word}" == --prompt ]] && prompt=1 || backup=1
         if (( ++index == COMP_CWORD )); then
-          COMPREPLY=()
-          return 0
+          [[ "${word}" == --backup-id ]] && _istoria_labels
+          return
         fi
         ;;
     esac
   done
 
   # Other words are the query, free text
-  case "${current}" in
-    --*)
-      [[ -z "${print_query}" ]] && candidates+=(--print-query)
-      [[ -z "${prompt}" ]] && candidates+=(--prompt)
-      (( COMP_CWORD == 1 )) && candidates+=(--delete-last --init-config --help --version)
-      ;;
-    -*) (( COMP_CWORD == 1 )) && candidates+=(-h -V) ;;
-  esac
+  [[ "${current}" == --* ]] || return
 
-  COMPREPLY=( $(compgen -W "${candidates[*]}" -- "${current}") )
+  [[ -z "${print_query}" ]] && candidates+=(--print-query)
+  # A prompt and backups go apart, so do the two ways to search backups
+  [[ -z "${prompt}${backup}" ]] && candidates+=(--prompt --backup --backup-id)
+}
 
-  return 0
+_istoria_backup() {
+  if (( COMP_CWORD == 2 )); then
+    candidates=(list delete)
+  elif (( COMP_CWORD == 3 )) && [[ "${COMP_WORDS[2]}" == delete ]]; then
+    _istoria_labels
+  fi
+}
+
+_istoria_labels() {
+  candidates=( $(istoria backup list 2> /dev/null | cut -f1) )
 }
 
 complete -F _istoria istoria
