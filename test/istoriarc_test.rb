@@ -61,9 +61,9 @@ class IstoriarcTest < IstoriaTestCase
 
     @session.type('echo')
     @session.press(:down)
-    wait_for_istoria_in_bash('echo', prompt: 'backup›')
+    wait_for_istoria_in_bash('echo', prompt: '$ backup›')
 
-    assert_equal ['backup› echo', 'echo backed up'], pane
+    assert_equal ['$ backup› echo', 'echo backed up'], pane
 
     @session.press(:enter)
 

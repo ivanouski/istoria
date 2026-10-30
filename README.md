@@ -90,7 +90,7 @@ $ istoria backup delete 20261029-090000
 ```
 
 `istoria search --backup` searches every backup, `--backup-id LABEL` one of them, with `backup›` or
-`backup:LABEL›` as the prompt. Down opens `--backup` the way Up opens the history, so Enter
+`backup:LABEL›` after the prompt. Down opens `--backup` the way Up opens the history, so Enter
 runs the command and Tab puts it on the line. Typed as a command, istoria only prints it. Ctrl-D
 deletes nothing. Commands the shell hasn't saved yet aren't backed up, see
 [Bash history](#bash-history).

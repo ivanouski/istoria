@@ -50,8 +50,9 @@ _istoria_search() {
   [[ "${current}" == --* ]] || return
 
   [[ -z "${print_query}" ]] && candidates+=(--print-query)
-  # A prompt and backups go apart, so do the two ways to search backups
-  [[ -z "${prompt}${backup}" ]] && candidates+=(--prompt --backup --backup-id)
+  [[ -z "${prompt}" ]] && candidates+=(--prompt)
+  # The two ways to search backups go apart
+  [[ -z "${backup}" ]] && candidates+=(--backup --backup-id)
 }
 
 _istoria_backup() {

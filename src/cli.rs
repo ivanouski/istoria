@@ -64,7 +64,6 @@ const PROMPT_TEXT: &str = "--prompt takes the prompt text";
 const BACKUP_LABEL: &str = "--backup-id takes a backup label";
 const ONE_BACKUP_LABEL: &str = "--backup-id takes one backup label";
 const BACKUP_AND_LABEL: &str = "--backup and --backup-id can't be used together";
-const PROMPT_AND_BACKUP: &str = "--prompt can't be used with --backup or --backup-id";
 const DELETE_BACKUP_LABEL: &str = "backup delete takes a backup label";
 
 #[derive(Debug, PartialEq)]
@@ -169,10 +168,6 @@ fn parse_search(args: &[OsString]) -> Result<Args, String> {
         (false, Some(label)) => Searched::Backup(label),
         (true, Some(_)) => return Err(usage_error(BACKUP_AND_LABEL)),
     };
-
-    if search.prompt.is_some() && search.searched != Searched::History {
-        return Err(usage_error(PROMPT_AND_BACKUP));
-    }
 
     Ok(Args::Search(search))
 }
@@ -542,13 +537,17 @@ mod tests {
             error(&["search", "--backup", "--backup-id", LABEL]),
             BACKUP_AND_LABEL
         );
+    }
+
+    #[test]
+    fn takes_a_prompt_with_backups() {
         assert_eq!(
-            error(&["search", "--prompt", "$ ", "--backup"]),
-            PROMPT_AND_BACKUP
-        );
-        assert_eq!(
-            error(&["search", "--backup-id", LABEL, "--prompt", "$ "]),
-            PROMPT_AND_BACKUP
+            parse(&["search", "--prompt", "$ ", "--backup"]),
+            Ok(Args::Search(Search {
+                prompt: Some("$ ".to_string()),
+                searched: Searched::Backups,
+                ..Search::default()
+            }))
         );
     }
 }

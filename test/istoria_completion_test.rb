@@ -47,12 +47,12 @@ class IstoriaCompletionTest < IstoriaTestCase
 
   def test_search_options_are_not_offered_again
     assert_equal %w[--prompt --backup --backup-id], complete('search', '--print-query', '--')
-    assert_equal %w[--print-query], complete('search', '--prompt', '$ ', '--')
+    assert_equal %w[--print-query --backup --backup-id], complete('search', '--prompt', '$ ', '--')
   end
 
-  def test_backup_options_go_apart_from_each_other_and_the_prompt
-    assert_equal %w[--print-query], complete('search', '--backup', '--')
-    assert_equal %w[--print-query], complete('search', '--backup-id', '20261030-142501', '--')
+  def test_backup_options_go_apart
+    assert_equal %w[--print-query --prompt], complete('search', '--backup', '--')
+    assert_equal %w[--print-query --prompt], complete('search', '--backup-id', '20261030-142501', '--')
   end
 
   def test_prompt_text_is_not_completed
@@ -61,7 +61,7 @@ class IstoriaCompletionTest < IstoriaTestCase
   end
 
   def test_a_prompt_text_like_an_option_does_not_stop_completion
-    assert_equal %w[--print-query], complete('search', '--prompt', '--help', '--')
+    assert_equal %w[--print-query --backup --backup-id], complete('search', '--prompt', '--help', '--')
   end
 
   def test_nothing_follows_options_that_exit

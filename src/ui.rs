@@ -32,8 +32,8 @@ pub enum Status {
     Failed(String),
 }
 
-/// Returns the list's rows, the page for PgUp and PgDn. The label, like `backup`, goes before › in
-/// place of the shell prompt. The offset, the first match in view, is kept between draws.
+/// Returns the list's rows, the page for PgUp and PgDn. The label, like `backup`, goes before ›
+/// after the shell prompt. The offset, the first match in view, is kept between draws.
 pub fn draw(
     frame: &mut Frame,
     finder: &Finder,
@@ -48,7 +48,9 @@ pub fn draw(
     let shell_prompt = shell_prompt(prompt, area.width);
     // A pane too narrow for the prompt is too narrow for the times as well
     let times = finder.has_times() && !prompt.is_some_and(|prompt| too_wide(prompt, area.width));
-    let layout = RowLayout::new(times, shell_prompt.map(Line::width), area.width);
+    let prompt_line = prompt_line(shell_prompt, label, theme);
+    // Under the query after a shell prompt, which a label moves along
+    let layout = RowLayout::new(times, shell_prompt.map(|_| prompt_line.width()), area.width);
     let [prompt_area, divider_area, body] = split(area, list);
     let (body, border_area) = split_border(body, config.border, list);
     let preview = config
@@ -58,7 +60,7 @@ pub fn draw(
         .unwrap_or_default();
     let (list_area, preview_area) = split_preview(body, preview.len(), list);
 
-    draw_prompt_line(frame, prompt_area, shell_prompt, label, finder, theme);
+    draw_prompt_line(frame, prompt_area, prompt_line, finder);
     draw_divider(frame, divider_area, finder, theme, status);
     let height = draw_list(frame, list_area, finder, &layout, theme, list, offset);
     frame.render_widget(Paragraph::new(preview), preview_area);
@@ -197,18 +199,25 @@ pub fn draw_shell_prompt(frame: &mut Frame, prompt: Option<&Line>) {
     }
 }
 
-fn draw_prompt_line(
-    frame: &mut Frame,
-    area: Rect,
-    shell_prompt: Option<&Line>,
+/// The shell prompt, then the label and ›. Without either, › alone.
+fn prompt_line<'a>(
+    shell_prompt: Option<&Line<'a>>,
     label: Option<&str>,
-    finder: &Finder,
     theme: &Theme,
-) {
-    let mut line = shell_prompt.cloned().unwrap_or_else(|| match label {
-        Some(label) => Line::from(Span::styled(format!("{label}› "), theme.backup)),
-        None => Line::from(Span::styled("› ", theme.prompt)),
-    });
+) -> Line<'a> {
+    let mut line = shell_prompt.cloned().unwrap_or_default();
+
+    if let Some(label) = label {
+        line.push_span(Span::styled(format!("{label}› "), theme.backup));
+    } else if shell_prompt.is_none() {
+        line.push_span(Span::styled("› ", theme.prompt));
+    }
+
+    line
+}
+
+/// The prompt and the query after it
+fn draw_prompt_line(frame: &mut Frame, area: Rect, mut line: Line, finder: &Finder) {
     let prompt_width = line.width();
     let room = usize::from(area.width).saturating_sub(prompt_width);
     let (query, column) = scroll(finder.query(), finder.cursor(), room);
@@ -926,6 +935,22 @@ mod tests {
         assert_eq!(rendered.buffer[(0, 0)].fg, Color::Magenta);
         assert_eq!(rendered.buffer[(24, 0)].fg, Color::Reset);
         assert_eq!(rendered.cursor, Position::new(26, 0));
+    }
+
+    #[test]
+    fn shows_the_label_after_the_shell_prompt_and_the_commands_under_the_query() {
+        let rendered = Render::new(&finder("#1700000000\nls\n"))
+            .prompt("[user@pc ~/src]$ ")
+            .label("backup")
+            .width(60)
+            .run();
+
+        assert_eq!(
+            text(&rendered.buffer, 0).trim_end(),
+            "[user@pc ~/src]$ backup› ls"
+        );
+        assert_eq!(rendered.cursor, Position::new(27, 0));
+        assert_eq!(text(&rendered.buffer, FIRST_ROW).find("ls"), Some(25));
     }
 
     #[test]

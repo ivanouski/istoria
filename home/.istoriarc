@@ -15,8 +15,8 @@ __istoria_search() {
 
   # istoria shows the prompt bash just cleared, ${PS1@P} needs bash 4.4. ISTORIA_PROMPT, written
   # like PS1, shows in its place. ISTORIA_SHELL_PROMPT=false skips PS1 for ›, as PS1 runs its
-  # $(...) again, slow for a git status in a big repo. Backups show their own label instead.
-  if (( $# == 0 && BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] >= 404 )); then
+  # $(...) again, slow for a git status in a big repo. A backup search adds its label after it.
+  if (( BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] >= 404 )); then
     if [[ -n ${ISTORIA_PROMPT-} ]]; then
       options+=(--prompt "${ISTORIA_PROMPT@P}")
     elif [[ ${ISTORIA_SHELL_PROMPT-} != false ]]; then
