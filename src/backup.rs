@@ -12,32 +12,11 @@ use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, 
 use crate::context::Context;
 use crate::history::Entry;
 
+mod schema;
+
 /// The label of a backup, when it started in local time
 const LABEL_FORMAT: &str = "%Y%m%d-%H%M%S";
 const LABEL_WIDTH: usize = "20261030-142501".len();
-/// Bumped when the schema changes
-const SCHEMA_VERSION: i64 = 1;
-
-/// A backup is its start, in seconds, and the entries it saw. An entry without a timestamp has the
-/// time 0, as NULLs would never be equal in the unique key.
-const SCHEMA: &str = "
-CREATE TABLE backups (
-  started_at INTEGER PRIMARY KEY,
-  host       TEXT NOT NULL
-);
-CREATE TABLE entries (
-  id      INTEGER PRIMARY KEY,
-  time    INTEGER NOT NULL,
-  command TEXT NOT NULL,
-  UNIQUE (time, command)
-);
-CREATE TABLE entry_backups (
-  started_at INTEGER NOT NULL REFERENCES backups ON DELETE CASCADE,
-  entry_id   INTEGER NOT NULL REFERENCES entries ON DELETE CASCADE,
-  PRIMARY KEY (started_at, entry_id)
-) WITHOUT ROWID;
-CREATE INDEX entry_backups_entry_id ON entry_backups (entry_id);
-";
 
 pub struct Backups {
     connection: Connection,
@@ -97,12 +76,13 @@ impl Backups {
         Self::init(connection).context(path.display())
     }
 
-    /// Refuses a database from a newer istoria
+    /// Foreign keys are off in every new connection, and the cascades need them
     fn init(connection: Connection) -> Result<Self, String> {
-        match prepare(&connection).map_err(|error| error.to_string())? {
-            SCHEMA_VERSION => Ok(Self { connection }),
-            version => Err(format!("schema version {version}, from a newer istoria")),
-        }
+        connection
+            .pragma_update(None, "foreign_keys", true)
+            .map_err(|error| error.to_string())?;
+        schema::prepare(&connection)?;
+        Ok(Self { connection })
     }
 
     /// Saves the entries as a backup started at the time, adding those no backup had
@@ -225,33 +205,6 @@ impl Backups {
 
         entries.context("cannot read backups")
     }
-}
-
-/// Turns foreign keys on and creates the tables in a new database, returns the schema version
-fn prepare(connection: &Connection) -> rusqlite::Result<i64> {
-    connection.pragma_update(None, "foreign_keys", true)?;
-
-    if schema_version(connection)? == 0 {
-        create_schema(connection)?;
-    }
-
-    schema_version(connection)
-}
-
-fn schema_version(connection: &Connection) -> rusqlite::Result<i64> {
-    connection.pragma_query_value(None, "user_version", |row| row.get(0))
-}
-
-/// Unless another istoria created it meanwhile
-fn create_schema(connection: &Connection) -> rusqlite::Result<()> {
-    let transaction = Transaction::new_unchecked(connection, TransactionBehavior::Immediate)?;
-
-    if schema_version(&transaction)? == 0 {
-        transaction.execute_batch(SCHEMA)?;
-        transaction.pragma_update(None, "user_version", SCHEMA_VERSION)?;
-    }
-
-    transaction.commit()
 }
 
 /// Saves the backup's row and its entries
