@@ -169,15 +169,26 @@ impl Backups {
 
         transaction
             .execute("DELETE FROM backups WHERE started_at = ?1", [started_at])
-            .and_then(|_| {
-                transaction.execute(
-                    "DELETE FROM entries WHERE NOT EXISTS
-                     (SELECT 1 FROM entry_backups WHERE entry_id = entries.id)",
-                    [],
-                )
-            })
-            .and_then(|_| transaction.commit())
+            .and_then(|_| delete_orphans(&transaction))
+            .and_then(|()| transaction.commit())
             .context("cannot delete the backup")
+    }
+
+    /// Deletes the entries from the backup started at the time, or from every backup, and the
+    /// entries no backup has left
+    pub fn delete_entries(
+        &mut self,
+        entries: &[&Entry],
+        started_at: Option<i64>,
+    ) -> Result<(), String> {
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .context("cannot delete")?;
+
+        remove(&transaction, entries, started_at)
+            .and_then(|()| transaction.commit())
+            .context("cannot delete")
     }
 
     /// The entries of one backup or all of them, oldest first like a history file. Entries without
@@ -241,6 +252,43 @@ fn insert(
     }
 
     Ok(saved)
+}
+
+/// Unlinks the entries from the backup started at the time, or from every backup, and deletes
+/// those no backup has left
+fn remove(
+    transaction: &Transaction,
+    entries: &[&Entry],
+    started_at: Option<i64>,
+) -> rusqlite::Result<()> {
+    // NULL for every backup
+    let mut unlink = transaction.prepare(
+        "DELETE FROM entry_backups WHERE (?1 IS NULL OR started_at = ?1)
+         AND entry_id = (SELECT id FROM entries WHERE time = ?2 AND command = ?3)",
+    )?;
+    let mut delete = transaction.prepare(
+        "DELETE FROM entries WHERE time = ?1 AND command = ?2
+         AND NOT EXISTS (SELECT 1 FROM entry_backups WHERE entry_id = entries.id)",
+    )?;
+
+    for entry in entries {
+        let time = entry.time.unwrap_or(0);
+        unlink.execute(params![started_at, time, entry.original])?;
+        delete.execute(params![time, entry.original])?;
+    }
+
+    Ok(())
+}
+
+/// Deletes the entries no backup has
+fn delete_orphans(transaction: &Transaction) -> rusqlite::Result<()> {
+    transaction
+        .execute(
+            "DELETE FROM entries WHERE NOT EXISTS
+             (SELECT 1 FROM entry_backups WHERE entry_id = entries.id)",
+            [],
+        )
+        .map(|_| ())
 }
 
 /// Only the owner can read the directory, its parents are made as usual
@@ -454,6 +502,62 @@ mod tests {
         assert_eq!(backups.list().unwrap().len(), 1);
         assert_eq!(commands(&backups.entries(None).unwrap()), [(Some(2), "ls")]);
         assert!(backups.entries(Some(START)).unwrap().is_empty());
+    }
+
+    #[test]
+    fn deletes_entries_from_every_backup() {
+        let mut backups = backups();
+        save(&mut backups, "secret\n#1\nsecret\n#2\nls\n", START);
+        save(&mut backups, "#1\nsecret\n#2\nls\n", START + 1);
+        let all = backups.entries(None).unwrap();
+        let secrets: Vec<&Entry> = all
+            .iter()
+            .filter(|entry| entry.original == "secret")
+            .collect();
+
+        backups.delete_entries(&secrets, None).unwrap();
+
+        assert_eq!(commands(&backups.entries(None).unwrap()), [(Some(2), "ls")]);
+        assert_eq!(
+            commands(&backups.entries(Some(START)).unwrap()),
+            [(Some(2), "ls")]
+        );
+        assert_eq!(
+            backups
+                .list()
+                .unwrap()
+                .iter()
+                .map(|listed| listed.entries)
+                .collect::<Vec<_>>(),
+            [1, 1]
+        );
+    }
+
+    #[test]
+    fn deletes_entries_from_one_backup_and_those_no_other_has() {
+        let mut backups = backups();
+        save(&mut backups, "#1\nsecret\n#2\nls\n#3\nsecret\n", START);
+        save(&mut backups, "#1\nsecret\n#2\nls\n", START + 1);
+        let first = backups.entries(Some(START)).unwrap();
+        let secrets: Vec<&Entry> = first
+            .iter()
+            .filter(|entry| entry.original == "secret")
+            .collect();
+
+        backups.delete_entries(&secrets, Some(START)).unwrap();
+
+        assert_eq!(
+            commands(&backups.entries(Some(START)).unwrap()),
+            [(Some(2), "ls")]
+        );
+        assert_eq!(
+            commands(&backups.entries(Some(START + 1)).unwrap()),
+            [(Some(1), "secret"), (Some(2), "ls")]
+        );
+        assert_eq!(
+            commands(&backups.entries(None).unwrap()),
+            [(Some(1), "secret"), (Some(2), "ls")]
+        );
     }
 
     #[test]

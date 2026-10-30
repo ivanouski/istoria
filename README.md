@@ -52,7 +52,7 @@ Each word matches anywhere in a command, in any order, ignoring case: `push git`
 | PgUp, PgDn                    | move the selection by a page             |
 | Enter                         | run the selected command                 |
 | Tab                           | put the selected command on the line     |
-| Ctrl-D                        | delete the selected command from history |
+| Ctrl-D                        | delete the selected command              |
 | Left, Right, Home, End        | move the cursor (also Ctrl-A, Ctrl-E)    |
 | Alt-B, Alt-F, Alt/Ctrl-Arrows | move the cursor by word                  |
 | Backspace, Delete             | delete a character                       |
@@ -91,9 +91,11 @@ $ istoria backup delete 20261029-090000
 
 `istoria search --backup` searches every backup, `--backup-id LABEL` one of them, with `backup›` or
 `backup:LABEL›` after the prompt. Down opens `--backup` the way Up opens the history, so Enter
-runs the command and Tab puts it on the line. Typed as a command, istoria only prints it. Ctrl-D
-deletes nothing. Commands the shell hasn't saved yet aren't backed up, see
-[Bash history](#bash-history).
+runs the command and Tab puts it on the line. Typed as a command, istoria only prints it. Commands
+the shell hasn't saved yet aren't backed up, see [Bash history](#bash-history).
+
+Ctrl-D in backups asks first, and `y` deletes the command from every backup, or only from `LABEL`
+with `--backup-id`. Any other key cancels. Ctrl-D in history leaves backups as they are.
 
 ## Config
 
@@ -111,7 +113,7 @@ prompt   = { fg = "blue", bold = true }
 backup   = "yellow"        # the prompt searching backups
 count    = "dark-gray"     # matches/commands
 deleted  = "green"         # the status after Ctrl-D
-error    = "red"           # Ctrl-D failed, the count of no matches
+error    = "red"           # Ctrl-D asking or failed, the count of no matches
 match    = { fg = "yellow", bold = true }
 dim      = "dark-gray"     # times, run counts, cuts, dividers, border
 selected = { bg = "238" }  # the selected row, under the match

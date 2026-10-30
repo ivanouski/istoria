@@ -33,7 +33,7 @@ Keys:
   PgUp, PgDn                move the selection by a page
   Enter                     print the selected command
   Tab                       print the selected command, exit with 4
-  Ctrl-D                    delete the selected command from history
+  Ctrl-D                    delete the selected command from history or backups
   Left, Right, Home, End    move the cursor in the query
   Ctrl-A, Ctrl-E            move the cursor to the start, the end
   Alt-B, Alt-F              move the cursor a word back, forward
@@ -46,8 +46,9 @@ Keys:
   Ctrl-C                    quit, exit with 130
 
 Without matches, Enter and Tab quit like Esc. With the list above the prompt
-line, Up, Ctrl-P and PgUp move to older commands. Ctrl-D leaves backups as they
-are.
+line, Up, Ctrl-P and PgUp move to older commands. In history, Ctrl-D leaves
+backups as they are. In backups it asks first: y deletes the command from the
+backups searched, any other key cancels.
 
 Backups: $XDG_DATA_HOME/istoria/history.db, labeled by when they started, in
 local time.

@@ -45,7 +45,7 @@ class IstoriaTestCase < Minitest::Test
 
   DIVIDER_ROW = 1
   FIRST_ROW = 2
-  PANE_DIVIDER = %r{\A─* ?(\d+/\d+|deleted .*|cannot .*|no delete .*) ──\z}
+  PANE_DIVIDER = %r{\A─* ?(\d+/\d+|deleted .*|cannot .*|delete from .*) ──\z}
 
   private
 
@@ -119,7 +119,7 @@ class IstoriaTestCase < Minitest::Test
   def delete
     before = @session.screen
     @session.press(:ctrl_d)
-    @session.wait_for { |lines| lines != before && lines.any? { |line| line.match?(/ (deleted|cannot|no delete) /) } }
+    @session.wait_for { |lines| lines != before && lines.any? { |line| line.match?(/ (deleted|cannot|delete from) /) } }
   end
 
   def assert_picks(*keys, command, status: 0)

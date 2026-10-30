@@ -7,6 +7,7 @@ use std::sync::atomic::Ordering;
 use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::text::Line;
 
+use crate::backup::Backups;
 use crate::config::{Config, ListPosition};
 use crate::context::Context;
 use crate::finder::Finder;
@@ -15,15 +16,19 @@ use crate::pane::Pane;
 use crate::ui::Status;
 use crate::{tty, ui};
 
-const NO_BACKUP_DELETE: &str = "no delete available for backups";
+/// After Ctrl-D in backups, deletes the command
+const CONFIRM_KEY: char = 'y';
 
 /// Where the commands come from
 pub enum Source {
     History(History),
-    /// Read only, from one backup with its label or from all of them
+    /// From one backup, with its label and start, or from all of them
     Backups {
+        /// None before the first backup
+        backups: Option<Backups>,
         entries: Vec<Entry>,
         label: Option<String>,
+        started_at: Option<i64>,
     },
 }
 
@@ -92,7 +97,9 @@ pub fn pick(
         match tty::next_event(&signal)? {
             None => break Outcome::Signaled(signal.load(Ordering::Relaxed)),
             Some(Event::Key(key)) if key.kind == KeyEventKind::Press => {
-                match handle_key(key, finder, source, page, list) {
+                let confirming = matches!(status, Some(Status::Confirm(_)));
+
+                match handle_key(key, finder, source, page, list, confirming) {
                     Break(outcome) => break outcome,
                     Continue(next_status) => status = next_status,
                 }
@@ -118,17 +125,24 @@ pub fn pick(
 }
 
 /// Ends the finder with an outcome, or keeps it open with a status to show. Above the prompt line
-/// Up goes to older commands.
+/// Up goes to older commands. While Ctrl-D asks about backups, only `y` deletes and any other key
+/// cancels without doing what it does.
 fn handle_key(
     key: KeyEvent,
     finder: &mut Finder,
     source: &mut Source,
     page: usize,
     list: ListPosition,
+    confirming: bool,
 ) -> ControlFlow<Outcome, Option<Status>> {
     let control = key.modifiers.contains(KeyModifiers::CONTROL);
     let alt = key.modifiers.contains(KeyModifiers::ALT);
     let above = list == ListPosition::Above;
+
+    if confirming {
+        let yes = key.code == KeyCode::Char(CONFIRM_KEY) && !control && !alt;
+        return Continue(if yes { delete(finder, source) } else { None });
+    }
 
     match (key.code, control) {
         (KeyCode::Esc, _) => return Break(Outcome::Quit),
@@ -144,7 +158,12 @@ fn handle_key(
                 None => Outcome::Quit,
             });
         }
-        (KeyCode::Char('d'), true) => return Continue(delete(finder, source)),
+        (KeyCode::Char('d'), true) => {
+            return Continue(match source {
+                Source::History(_) => delete(finder, source),
+                Source::Backups { .. } => confirm(finder, source),
+            });
+        }
         (KeyCode::Up, _) | (KeyCode::Char('p'), true) if above => finder.down(),
         (KeyCode::Down, _) | (KeyCode::Char('n'), true) if above => finder.up(),
         (KeyCode::PageUp, _) if above => finder.page_down(page),
@@ -175,24 +194,63 @@ fn handle_key(
     Continue(None)
 }
 
-/// Deletes every occurrence of the selected command from history, backups stay as they are
-fn delete(finder: &mut Finder, source: &mut Source) -> Option<Status> {
+/// Asks before deleting the selected command from backups
+fn confirm(finder: &Finder, source: &Source) -> Option<Status> {
     let command = finder.selection()?;
-
-    let Source::History(history) = source else {
-        return Some(Status::Failed(NO_BACKUP_DELETE.to_string()));
+    let backups = match source {
+        Source::Backups {
+            label: Some(label), ..
+        } => format!("backup {label}"),
+        _ => "every backup".to_string(),
     };
 
+    Some(Status::Confirm(format!(
+        "delete from {backups}? {CONFIRM_KEY}: {}",
+        command.text
+    )))
+}
+
+/// Deletes every occurrence of the selected command from history, or from the backups searched.
+/// Deleting from history leaves backups as they are.
+fn delete(finder: &mut Finder, source: &mut Source) -> Option<Status> {
+    let command = finder.selection()?;
     let message = format!("deleted {}", command.text);
-    let deleted = history
-        .delete(&command.entry_indices)
-        .context("cannot delete");
-    let reloaded = history.reload().context("cannot read history");
+
+    let result = match source {
+        Source::History(history) => {
+            let deleted = history
+                .delete(&command.entry_indices)
+                .context("cannot delete");
+            let reloaded = history.reload().context("cannot read history");
+
+            deleted.and(reloaded)
+        }
+        Source::Backups {
+            backups: Some(backups),
+            entries,
+            started_at,
+            ..
+        } => {
+            let selected: Vec<&Entry> = command
+                .entry_indices
+                .iter()
+                .map(|&index| &entries[index])
+                .collect();
+            let deleted = backups.delete_entries(&selected, *started_at);
+            let reloaded = backups
+                .entries(*started_at)
+                .map(|reloaded| *entries = reloaded);
+
+            deleted.and(reloaded)
+        }
+        // Without a database there is nothing to select
+        Source::Backups { backups: None, .. } => return None,
+    };
 
     // Keep the selection in place, on the command after the deleted one
-    finder.reload(history.entries());
+    finder.reload(source.entries());
 
-    Some(match deleted.and(reloaded) {
+    Some(match result {
         Ok(()) => Status::Deleted(message),
         Err(error) => Status::Failed(error),
     })
@@ -203,7 +261,8 @@ mod tests {
     use std::fs;
 
     use super::*;
-    use crate::test_util::TempFile;
+    use crate::test_util::{TempDir, TempFile};
+    use crate::{backup, history};
 
     /// The finder lists the commands most recent first: echo, pwd, ls
     const HISTORY: &str = "ls\npwd\necho\n";
@@ -214,12 +273,19 @@ mod tests {
     const CONTROL: KeyModifiers = KeyModifiers::CONTROL;
     const ALT: KeyModifiers = KeyModifiers::ALT;
 
-    /// The finder on a history file of its own
+    /// When the first backup started
+    const START: i64 = 1_700_000_000;
+
+    /// The finder on a history file of its own, or on backups
     struct Session {
         file: TempFile,
         source: Source,
         finder: Finder,
         list: ListPosition,
+        /// Whether Ctrl-D asks about backups
+        confirming: bool,
+        /// Holds the backups
+        dir: Option<TempDir>,
     }
 
     impl Session {
@@ -233,7 +299,52 @@ mod tests {
                 source: Source::History(history),
                 finder,
                 list: ListPosition::Below,
+                confirming: false,
+                dir: None,
             }
+        }
+
+        /// Two backups, of the history and of pwd alone, searched both or the first
+        fn open_backups(name: &str, first: bool) -> Self {
+            let mut session = Self::open(name);
+            let dir = TempDir::new(&format!("keys-{name}"));
+            let mut backups = Backups::open(&dir.path.join("history.db")).unwrap();
+            backups
+                .save(session.source.entries(), "mac", START)
+                .unwrap();
+            backups
+                .save(&history::parse(b"pwd\n"), "mac", START + 1)
+                .unwrap();
+
+            let started_at = first.then_some(START);
+            let entries = backups.entries(started_at).unwrap();
+            session.finder = Finder::new(&entries, String::new());
+            session.source = Source::Backups {
+                backups: Some(backups),
+                entries,
+                label: started_at.map(backup::label),
+                started_at,
+            };
+            session.dir = Some(dir);
+            session
+        }
+
+        /// The commands of a backup or of all of them, oldest first
+        fn backed_up(&self, started_at: Option<i64>) -> Vec<String> {
+            let Source::Backups {
+                backups: Some(backups),
+                ..
+            } = &self.source
+            else {
+                panic!("no backups");
+            };
+
+            backups
+                .entries(started_at)
+                .unwrap()
+                .into_iter()
+                .map(|entry| entry.original)
+                .collect()
         }
 
         fn press(
@@ -241,13 +352,16 @@ mod tests {
             code: KeyCode,
             modifiers: KeyModifiers,
         ) -> ControlFlow<Outcome, Option<Status>> {
-            handle_key(
+            let flow = handle_key(
                 KeyEvent::new(code, modifiers),
                 &mut self.finder,
                 &mut self.source,
                 PAGE,
                 self.list,
-            )
+                self.confirming,
+            );
+            self.confirming = matches!(flow, Continue(Some(Status::Confirm(_))));
+            flow
         }
 
         /// Presses a key that keeps the finder open without a status
@@ -456,19 +570,90 @@ mod tests {
     }
 
     #[test]
-    fn deletes_nothing_from_backups() {
-        let mut session = Session::open("delete-backup");
-        session.source = Source::Backups {
-            entries: Vec::new(),
-            label: None,
-        };
+    fn deletes_from_every_backup_after_y() {
+        let mut session = Session::open_backups("delete-backups", false);
+        session.edit(KeyCode::Down, NONE);
 
         assert_eq!(
             session.press(KeyCode::Char('d'), CONTROL),
-            Continue(Some(Status::Failed(NO_BACKUP_DELETE.to_string())))
+            Continue(Some(Status::Confirm(
+                "delete from every backup? y: pwd".to_string()
+            )))
         );
+        assert_eq!(session.backed_up(None), ["ls", "pwd", "echo"]);
+
+        assert_eq!(
+            session.press(KeyCode::Char(CONFIRM_KEY), NONE),
+            Continue(Some(Status::Deleted("deleted pwd".to_string())))
+        );
+        assert_eq!(session.backed_up(None), ["ls", "echo"]);
+        assert_eq!(session.backed_up(Some(START + 1)), Vec::<String>::new());
+        assert_eq!(session.finder.selection().unwrap().text, "ls");
         assert_eq!(session.file.read(), HISTORY);
-        assert_eq!(session.finder.selection().unwrap().text, "echo");
+    }
+
+    #[test]
+    fn deletes_only_from_the_backup_searched() {
+        let mut session = Session::open_backups("delete-backup", true);
+        session.edit(KeyCode::Down, NONE);
+
+        assert_eq!(
+            session.press(KeyCode::Char('d'), CONTROL),
+            Continue(Some(Status::Confirm(format!(
+                "delete from backup {}? y: pwd",
+                backup::label(START)
+            ))))
+        );
+        assert_eq!(
+            session.press(KeyCode::Char(CONFIRM_KEY), NONE),
+            Continue(Some(Status::Deleted("deleted pwd".to_string())))
+        );
+        assert_eq!(session.backed_up(Some(START)), ["ls", "echo"]);
+        assert_eq!(session.backed_up(Some(START + 1)), ["pwd"]);
+        assert_eq!(session.finder.selection().unwrap().text, "ls");
+    }
+
+    #[test]
+    fn cancels_a_delete_from_backups_on_any_other_key() {
+        let mut session = Session::open_backups("delete-backup-cancel", false);
+
+        for (code, modifiers) in [
+            (KeyCode::Esc, NONE),
+            (KeyCode::Char('c'), CONTROL),
+            (KeyCode::Char('d'), CONTROL),
+            (KeyCode::Char(CONFIRM_KEY), CONTROL),
+            (KeyCode::Char('Y'), KeyModifiers::SHIFT),
+            (KeyCode::Char('n'), NONE),
+            (KeyCode::Enter, NONE),
+            (KeyCode::Down, NONE),
+        ] {
+            assert!(matches!(
+                session.press(KeyCode::Char('d'), CONTROL),
+                Continue(Some(Status::Confirm(_)))
+            ));
+            session.edit(code, modifiers);
+
+            assert_eq!(session.finder.query(), "", "{code:?}");
+            assert_eq!(session.finder.selected(), 0, "{code:?}");
+        }
+
+        assert_eq!(session.backed_up(None), ["ls", "pwd", "echo"]);
+        // Asks again after a cancel
+        assert!(matches!(
+            session.press(KeyCode::Char('d'), CONTROL),
+            Continue(Some(Status::Confirm(_)))
+        ));
+    }
+
+    #[test]
+    fn asks_nothing_without_matches_in_backups() {
+        let mut session = Session::open_backups("delete-backup-none", false);
+        session.edit(KeyCode::Char('z'), NONE);
+        session.edit(KeyCode::Char('d'), CONTROL);
+        session.edit(KeyCode::Char(CONFIRM_KEY), NONE);
+
+        assert_eq!(session.finder.query(), format!("z{CONFIRM_KEY}"));
+        assert_eq!(session.backed_up(None), ["ls", "pwd", "echo"]);
     }
 
     #[test]

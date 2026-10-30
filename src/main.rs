@@ -27,7 +27,7 @@ use cli::{Args, Search, Searched};
 use config::Config;
 use context::Context;
 use finder::Finder;
-use history::{Entry, History};
+use history::History;
 
 // Exit statuses .istoriarc acts on. The query's own status keeps an older istoria's failure from
 // reading as an empty query.
@@ -66,14 +66,8 @@ fn run_search(search: Search) -> Result<ExitCode, String> {
     let config = Config::load()?;
     let mut source = match search.searched {
         Searched::History => Source::History(load_history()?),
-        Searched::Backups => Source::Backups {
-            entries: backup_entries(None)?,
-            label: None,
-        },
-        Searched::Backup(label) => Source::Backups {
-            entries: backup_entries(Some(&label))?,
-            label: Some(label),
-        },
+        Searched::Backups => backup_source(None)?,
+        Searched::Backup(label) => backup_source(Some(label))?,
     };
     let mut finder = Finder::new(source.entries(), search.query);
     let prompt = search.prompt.map(|text| prompt::parse(&text));
@@ -137,17 +131,26 @@ fn delete_backup(label: &str) -> Result<(), String> {
     backups.delete(started_at)
 }
 
-/// The entries of the backup with the label, or of all of them, none before the first backup
-fn backup_entries(label: Option<&str>) -> Result<Vec<Entry>, String> {
-    if let Some(label) = label {
-        let (backups, started_at) = find_backup(label)?;
-        return backups.entries(Some(started_at));
-    }
+/// The backup with the label, or all of them, without entries before the first backup
+fn backup_source(label: Option<String>) -> Result<Source, String> {
+    let (backups, started_at) = match &label {
+        Some(label) => {
+            let (backups, started_at) = find_backup(label)?;
+            (Some(backups), Some(started_at))
+        }
+        None => (Backups::open_existing(&backup::path()?)?, None),
+    };
+    let entries = match &backups {
+        Some(backups) => backups.entries(started_at)?,
+        None => Vec::new(),
+    };
 
-    match Backups::open_existing(&backup::path()?)? {
-        Some(backups) => backups.entries(None),
-        None => Ok(Vec::new()),
-    }
+    Ok(Source::Backups {
+        backups,
+        entries,
+        label,
+        started_at,
+    })
 }
 
 /// The database and the start of the backup with the label

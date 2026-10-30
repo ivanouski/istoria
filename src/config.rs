@@ -24,7 +24,7 @@ prompt   = { fg = "blue", bold = true }
 backup   = "yellow"        # the prompt searching backups
 count    = "dark-gray"     # matches/commands
 deleted  = "green"         # the status after Ctrl-D
-error    = "red"           # Ctrl-D failed, the count of no matches
+error    = "red"           # Ctrl-D asking or failed, the count of no matches
 match    = { fg = "yellow", bold = true }
 dim      = "dark-gray"     # times, run counts, cuts, dividers, border
 selected = { bg = "238" }  # the selected row, under the match

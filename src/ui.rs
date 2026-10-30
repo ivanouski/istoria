@@ -25,11 +25,13 @@ const MIN_LIST_ROWS: usize = 3;
 const DASH: &str = "─";
 const COUNT_END: &str = " ──";
 
-/// The outcome of the last Ctrl-D, shown in place of the count until the next key
+/// The outcome of the last Ctrl-D, or its question, shown in place of the count until the next key
 #[derive(Debug, PartialEq)]
 pub enum Status {
     Deleted(String),
     Failed(String),
+    /// Before deleting from backups
+    Confirm(String),
 }
 
 /// Returns the list's rows, the page for PgUp and PgDn. The label, like `backup`, goes before ›
@@ -303,7 +305,7 @@ fn cut(text: &str, width: usize) -> String {
 fn count(finder: &Finder, theme: &Theme, status: Option<&Status>) -> (String, Style) {
     match status {
         Some(Status::Deleted(message)) => (message.clone(), theme.deleted),
-        Some(Status::Failed(message)) => (message.clone(), theme.error),
+        Some(Status::Failed(message) | Status::Confirm(message)) => (message.clone(), theme.error),
         None => {
             let text = format!("{}/{}", finder.matches().len(), finder.commands().len());
             let style = if finder.matches().is_empty() {
@@ -1058,6 +1060,22 @@ mod tests {
         assert_eq!(text(&buffer, 0).trim_end(), "› 0123456789");
         assert_eq!(text(&buffer, DIVIDER_ROW), " deleted git com… ──");
         assert_eq!(cursor, Position::new(12, 0));
+    }
+
+    #[test]
+    fn asks_before_deleting_from_backups_in_the_error_color() {
+        let finder = query_finder("0123456789", false);
+        let status = Status::Confirm("delete from every backup? y: ls".to_string());
+        let buffer = Render::new(&finder).width(40).status(status).run().buffer;
+
+        assert_eq!(
+            text(&buffer, DIVIDER_ROW),
+            format!("{} delete from every backup? y: ls ──", DASH.repeat(5))
+        );
+        assert_eq!(
+            buffer[(6, DIVIDER_ROW)].fg,
+            Theme::default().error.fg.unwrap()
+        );
     }
 
     #[test]
