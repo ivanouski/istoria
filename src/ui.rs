@@ -1062,7 +1062,7 @@ mod tests {
 
     #[test]
     fn lines_the_commands_up_under_the_query_with_the_times_before_them() {
-        let prompt = "[mon@Aer ~/src/utils (main)]$ ";
+        let prompt = "[user@pc ~/src/utils (main)]$ ";
         let buffer = Render::new(&finder(HISTORY))
             .prompt(prompt)
             .width(120)

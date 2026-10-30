@@ -77,8 +77,8 @@ class IstoriaTestCase < Minitest::Test
     @session.wait_for { |lines| !lines.first.empty? }
   end
 
-  def wait_for_istoria_in_bash(query = '')
-    prompt = "$ #{query}".rstrip
+  def wait_for_istoria_in_bash(query = '', prompt: '$')
+    prompt = "#{prompt} #{query}".rstrip
     @session.wait_for { |lines| lines.each_cons(2).any? { |line, below| line == prompt && below.match?(PANE_DIVIDER) } }
   end
 

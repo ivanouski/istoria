@@ -9,9 +9,14 @@ class IstoriarcTest < IstoriaTestCase
 
     bindings = stdout.lines(chomp: true).map { |line| line.scan(/"([^"]*)"/).flatten }
     macro = '\e[9100~\e[9101~'
+    backups = '\e[9102~\e[9101~'
 
-    assert_equal [['\eOA', macro], ['\eOB', macro], ['\e[9100~', '__istoria_search'], ['\e[A', macro], ['\e[B', macro]],
-                 bindings.sort
+    expected = [
+      ['\eOA', macro], ['\eOB', backups], ['\e[9100~', '__istoria_search'], ['\e[9102~', '__istoria_search --backup'],
+      ['\e[A', macro], ['\e[B', backups],
+    ]
+
+    assert_equal expected, bindings.sort
   end
 
   def test_istoriarc_does_nothing_in_a_non_interactive_shell
@@ -46,6 +51,23 @@ class IstoriarcTest < IstoriaTestCase
     @session.press(:enter)
 
     @session.wait_for { |lines| lines.first(3) == ['$ echo picked', 'picked', '$'] }
+  end
+
+  def test_down_searches_the_backups_for_the_typed_text_and_enter_runs_the_command
+    File.write(@history, "echo backed up\nls\n")
+    run_istoria('backup', env: { 'XDG_DATA_HOME' => nil, 'HOME' => @tmp_dir })
+    File.write(@history, "echo first\n")
+    start_bash
+
+    @session.type('echo')
+    @session.press(:down)
+    wait_for_istoria_in_bash('echo', prompt: 'backup›')
+
+    assert_equal ['backup› echo', 'echo backed up'], pane
+
+    @session.press(:enter)
+
+    @session.wait_for { |lines| lines.first(3) == ['$ echo backed up', 'backed up', '$'] }
   end
 
   def test_tab_puts_the_command_on_the_line_without_running_it
@@ -99,12 +121,12 @@ class IstoriarcTest < IstoriaTestCase
 
   def test_lists_commands_under_the_query_after_a_long_prompt
     File.write(@history, "#1700000000\necho first\n#1700000000\necho picked\n")
-    start_bash(ps1: '[mon@Aer ~/src/utils (main)]\$ ')
+    start_bash(ps1: '[user@pc ~/src/utils (main)]\$ ')
 
     @session.type('echo')
     @session.press(:up)
     @session.wait_for do |lines|
-      lines.first == '[mon@Aer ~/src/utils (main)]$ echo' && lines[DIVIDER_ROW].end_with?(' 2/2 ──')
+      lines.first == '[user@pc ~/src/utils (main)]$ echo' && lines[DIVIDER_ROW].end_with?(' 2/2 ──')
     end
 
     assert_equal "#{' ' * 12}2023-11-14 22:13  echo picked", @session.screen[FIRST_ROW]
@@ -126,11 +148,11 @@ class IstoriarcTest < IstoriaTestCase
   def test_shows_istoria_prompt_in_its_colors_without_expanding_the_shell_prompt
     File.write(@history, "echo first\necho picked\n")
     expansions = File.join(@tmp_dir, 'expansions')
-    start_bash(ps1: "$(echo >> #{expansions})box\\$ ", bashrc: %q(ISTORIA_PROMPT='\[\e[32m\]mon›\[\e[0m\] '))
+    start_bash(ps1: "$(echo >> #{expansions})box\\$ ", bashrc: %q(ISTORIA_PROMPT='\[\e[32m\]hist›\[\e[0m\] '))
 
     @session.type('pick')
     @session.press(:up)
-    @session.wait_for { |lines| lines.first == 'mon› pick' && lines[DIVIDER_ROW].end_with?(' 1/2 ──') }
+    @session.wait_for { |lines| lines.first == 'hist› pick' && lines[DIVIDER_ROW].end_with?(' 1/2 ──') }
 
     assert_color '38;5;2'
     assert_equal 1, File.readlines(expansions).size
@@ -157,17 +179,6 @@ class IstoriarcTest < IstoriaTestCase
     @session.press(:ctrl_n)
 
     @session.wait_for { |lines| lines.first == '$ echo second' }
-  end
-
-  def test_down_opens_istoria_too
-    File.write(@history, "echo first\nls\n")
-    start_bash
-
-    @session.type('echo')
-    @session.press(:down)
-    wait_for_istoria_in_bash('echo')
-
-    assert_equal ['$ echo', 'echo first'], pane
   end
 
   def test_escape_keeps_the_typed_text

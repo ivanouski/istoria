@@ -8,14 +8,15 @@
 (( BASH_VERSINFO[0] >= 4 )) || return
 command -v istoria > /dev/null || return
 
+# Puts the command picked with istoria on the line, the arguments go to istoria search too
 __istoria_search() {
   local line status
-  local -a options=(--print-query)
+  local -a options=(--print-query "$@")
 
   # istoria shows the prompt bash just cleared, ${PS1@P} needs bash 4.4. ISTORIA_PROMPT, written
   # like PS1, shows in its place. ISTORIA_SHELL_PROMPT=false skips PS1 for ›, as PS1 runs its
-  # $(...) again, slow for a git status in a big repo.
-  if (( BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] >= 404 )); then
+  # $(...) again, slow for a git status in a big repo. Backups show their own label instead.
+  if (( $# == 0 && BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] >= 404 )); then
     if [[ -n ${ISTORIA_PROMPT-} ]]; then
       options+=(--prompt "${ISTORIA_PROMPT@P}")
     elif [[ ${ISTORIA_SHELL_PROMPT-} != false ]]; then
@@ -42,11 +43,12 @@ __istoria_search() {
   fi
 }
 
-# Up / Down search history with istoria, Enter runs the pick. Ctrl-P / Ctrl-N still step through it.
-# Up / Down run a macro of two fake keys: one opens istoria, the other runs the pick. No terminal
-# sends \e[9100~ or \e[9101~, so they can't clash with real keys.
+# Up searches history with istoria, Down every backup, Enter runs the pick. Ctrl-P / Ctrl-N still
+# step through history. Up and Down run a macro of two fake keys: one opens istoria, the other runs
+# the pick. No terminal sends \e[9100~, \e[9101~ or \e[9102~, so they can't clash with real keys.
 bind -x '"\e[9100~": __istoria_search'
+bind -x '"\e[9102~": __istoria_search --backup'
 bind '"\e[A": "\e[9100~\e[9101~"'
 bind '"\eOA": "\e[9100~\e[9101~"'
-bind '"\e[B": "\e[9100~\e[9101~"'
-bind '"\eOB": "\e[9100~\e[9101~"'
+bind '"\e[B": "\e[9102~\e[9101~"'
+bind '"\eOB": "\e[9102~\e[9101~"'
