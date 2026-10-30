@@ -107,7 +107,7 @@ border  = false   # a line on the far edge of the pane
 preview = false   # the selected command in full when its row is cut
 [colors]
 prompt   = { fg = "blue", bold = true }
-backup   = { fg = "magenta", bold = true }  # the prompt searching backups
+backup   = "yellow"        # the prompt searching backups
 count    = "dark-gray"     # matches/commands
 deleted  = "green"         # the status after Ctrl-D
 error    = "red"           # Ctrl-D failed, the count of no matches

@@ -30,7 +30,7 @@ class IstoriaBackupTest < IstoriaTestCase
     start('--backup')
 
     assert_equal ['backup›', 'pwd', 'ls', 'echo secret'], pane
-    assert_color '38;5;5'
+    assert_color '38;5;3'
 
     @session.close
     start('--backup-id', first)
