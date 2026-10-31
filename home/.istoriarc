@@ -43,12 +43,17 @@ __istoria_search() {
   fi
 }
 
-# Up searches history with istoria, Down every backup, Enter runs the pick. Ctrl-P / Ctrl-N still
-# step through history. Up and Down run a macro of two fake keys: one opens istoria, the other runs
-# the pick. No terminal sends \e[9100~, \e[9101~ or \e[9102~, so they can't clash with real keys.
+# Up / Down search history with istoria, Option+Up / Option+Down every backup, Enter runs the pick.
+# Ctrl-P / Ctrl-N still step through history. The keys run a macro of two fake keys: one opens
+# istoria, the other runs the pick. No terminal sends \e[9100~, \e[9101~ or \e[9102~, so they
+# can't clash with real keys. Option+arrows send \e[1;3A, or \e\e[A with Option as Meta.
 bind -x '"\e[9100~": __istoria_search'
 bind -x '"\e[9102~": __istoria_search --backup'
 bind '"\e[A": "\e[9100~\e[9101~"'
 bind '"\eOA": "\e[9100~\e[9101~"'
-bind '"\e[B": "\e[9102~\e[9101~"'
-bind '"\eOB": "\e[9102~\e[9101~"'
+bind '"\e[B": "\e[9100~\e[9101~"'
+bind '"\eOB": "\e[9100~\e[9101~"'
+bind '"\e[1;3A": "\e[9102~\e[9101~"'
+bind '"\e[1;3B": "\e[9102~\e[9101~"'
+bind '"\e\e[A": "\e[9102~\e[9101~"'
+bind '"\e\e[B": "\e[9102~\e[9101~"'

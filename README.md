@@ -42,7 +42,8 @@ HISTFILESIZE=10000
 
 ## Usage
 
-Up opens istoria with the typed text as the query, Down does the same in the [backups](#backups).
+Up or Down opens istoria with the typed text as the query, Option+Up or Option+Down does the same in
+the [backups](#backups).
 Each word matches anywhere in a command, in any order, ignoring case: `push git` finds
 `git -C api push`. Ctrl-P and Ctrl-N still step through the shell's history.
 
@@ -90,8 +91,9 @@ $ istoria backup delete 20261029-090000
 ```
 
 `istoria search --backup` searches every backup, `--backup-id LABEL` one of them, with `backup›` or
-`backup:LABEL›` after the prompt. Down opens `--backup` the way Up opens the history, so Enter
-runs the command and Tab puts it on the line. Typed as a command, istoria only prints it. Commands
+`backup:LABEL›` after the prompt. Option+Up and Option+Down open `--backup` the way Up opens the
+history, so Enter runs the command and Tab puts it on the line. Terminal.app needs "Use Option as
+Meta key" for them. Typed as a command, istoria only prints it. Commands
 the shell hasn't saved yet aren't backed up, see [Bash history](#bash-history).
 
 Ctrl-D in backups asks first, and `y` deletes the command from every backup, or only from `LABEL`

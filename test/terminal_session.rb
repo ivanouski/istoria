@@ -39,6 +39,8 @@ class TerminalSession
   KEYS = {
     up: "\e[A",
     down: "\e[B",
+    alt_up: "\e[1;3A",
+    alt_down: "\e[1;3B",
     right: "\e[C",
     left: "\e[D",
     home: "\e[H",
