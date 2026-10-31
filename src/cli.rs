@@ -20,7 +20,8 @@ Options:
   -V, --version  print the version
 
 search reads $HISTFILE. Each word of the query matches anywhere in a command, in
-any order, ignoring case.
+any order, ignoring case. With search = \"prefix\" in the config, the query
+matches the start of a command instead.
 
 Search options:
   --print-query      on Esc, print the query and exit with 3

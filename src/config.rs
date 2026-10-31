@@ -14,11 +14,12 @@ use serde::de::{self, Deserializer, MapAccess, Visitor};
 use crate::context::Context;
 
 /// The defaults as a config file, for --help and --init-config
-pub const DEFAULT: &str = r#"height  = 12      # rows of the pane, the terminal's at most
-list    = "below" # or "above" the prompt line, like fzf
-border  = false   # a line on the far edge of the pane
-preview = false   # the selected command in full when its row is cut
-times   = true    # when each command ran, if the history has times
+pub const DEFAULT: &str = r#"height  = 12        # rows of the pane, the terminal's at most
+list    = "below"   # or "above" the prompt line, like fzf
+border  = false     # a line on the far edge of the pane
+preview = false     # the selected command in full when its row is cut
+times   = true      # when each command ran, if the history has times
+search  = "keyword" # words anywhere, or "prefix": the start of commands
 [colors]
 prompt   = { fg = "blue", bold = true }
 backup   = "yellow"        # the prompt searching backups
@@ -47,6 +48,8 @@ pub struct Config {
     pub preview: bool,
     /// When each command ran, if the history has times
     pub times: bool,
+    /// How the query matches commands
+    pub search: SearchMode,
     pub colors: Theme,
 }
 
@@ -59,6 +62,17 @@ pub enum ListPosition {
     Above,
 }
 
+/// How the query matches commands
+#[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SearchMode {
+    /// Each word anywhere, in any order
+    #[default]
+    Keyword,
+    /// The start of the command
+    Prefix,
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -67,6 +81,7 @@ impl Default for Config {
             border: false,
             preview: false,
             times: true,
+            search: SearchMode::default(),
             colors: Theme::default(),
         }
     }
@@ -274,6 +289,7 @@ mod tests {
         assert_eq!(config.border, Config::default().border);
         assert_eq!(config.preview, Config::default().preview);
         assert_eq!(config.times, Config::default().times);
+        assert_eq!(config.search, Config::default().search);
         assert_eq!(config.colors, Theme::default());
     }
 
@@ -316,6 +332,25 @@ mod tests {
         assert!(Config::parse("").unwrap().times);
         assert!(!Config::parse("times = false\n").unwrap().times);
         assert!(error("times = \"no\"\n").contains("expected a boolean"));
+    }
+
+    #[test]
+    fn reads_the_search_mode() {
+        assert_eq!(Config::parse("").unwrap().search, SearchMode::Keyword);
+        assert_eq!(
+            Config::parse("search = \"keyword\"\n").unwrap().search,
+            SearchMode::Keyword
+        );
+        assert_eq!(
+            Config::parse("search = \"prefix\"\n").unwrap().search,
+            SearchMode::Prefix
+        );
+    }
+
+    #[test]
+    fn rejects_other_search_modes() {
+        assert!(error("search = \"fuzzy\"\n").contains("unknown variant `fuzzy`"));
+        assert!(error("search = \"Prefix\"\n").contains("expected `keyword` or `prefix`"));
     }
 
     #[test]

@@ -42,10 +42,13 @@ HISTFILESIZE=10000
 
 ## Usage
 
-Up or Down opens istoria with the typed text as the query, Option+Up or Option+Down does the same in
-the [backups](#backups).
+Up or Down opens istoria with the typed text as the query, Option+Up or Option+Down does the same
+in the [backups](#backups). Ctrl-P and Ctrl-N still step through the shell's history.
+
 Each word matches anywhere in a command, in any order, ignoring case: `push git` finds
-`git -C api push`. Ctrl-P and Ctrl-N still step through the shell's history.
+`git -C api push`. With `search = "prefix"` in the [config](#config), the query matches the start
+of a command instead: `git` finds `git push` but not `sudo git push`. A space after the query
+ends a word there, so `ls ` finds `ls` and `ls -la` but not `lsof`.
 
 | Key                           | Action                                   |
 | ----------------------------- | ---------------------------------------- |
@@ -105,11 +108,12 @@ with `--backup-id`. Any other key cancels. Ctrl-D in history leaves backups as t
 `$XDG_CONFIG_HOME`). Keys left out keep their defaults:
 
 ```toml
-height  = 12      # rows of the pane, the terminal's at most
-list    = "below" # or "above" the prompt line, like fzf
-border  = false   # a line on the far edge of the pane
-preview = false   # the selected command in full when its row is cut
-times   = true    # when each command ran, if the history has times
+height  = 12        # rows of the pane, the terminal's at most
+list    = "below"   # or "above" the prompt line, like fzf
+border  = false     # a line on the far edge of the pane
+preview = false     # the selected command in full when its row is cut
+times   = true      # when each command ran, if the history has times
+search  = "keyword" # words anywhere, or "prefix": the start of commands
 [colors]
 prompt   = { fg = "blue", bold = true }
 backup   = "yellow"        # the prompt searching backups

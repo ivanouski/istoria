@@ -32,6 +32,13 @@ class IstoriaListingTest < IstoriaTestCase
     assert_equal ['› CLAUDE --', 'claude --resume'], pane
   end
 
+  def test_prefix_search_matches_the_start_of_commands
+    write_config(%(search = "prefix"\n))
+    start('clau')
+
+    assert_equal ['› clau', 'Claude', 'claude --resume'], pane
+  end
+
   def test_typing_narrows_the_list
     start('clau')
     @session.type('de --')

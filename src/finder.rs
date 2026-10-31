@@ -6,6 +6,7 @@ use std::ops::Range;
 
 use chrono::{DateTime, Local};
 
+use crate::config::SearchMode;
 use crate::history::Entry;
 
 const TIME_FORMAT: &str = "%Y-%m-%d %H:%M";
@@ -35,6 +36,7 @@ pub struct Finder {
     commands: Vec<Command>,
     /// Whether to show a time column
     has_times: bool,
+    mode: SearchMode,
     query: String,
     /// Byte offset into the query, on a character boundary
     cursor: usize,
@@ -44,11 +46,12 @@ pub struct Finder {
 }
 
 impl Finder {
-    pub fn new(entries: &[Entry], query: String) -> Self {
+    pub fn new(entries: &[Entry], query: String, mode: SearchMode) -> Self {
         let commands = commands(entries);
         let mut finder = Self {
             has_times: commands.iter().any(|command| command.time.is_some()),
             commands,
+            mode,
             cursor: query.len(),
             query,
             matches: Vec::new(),
@@ -61,7 +64,7 @@ impl Finder {
     /// Rebuilds the commands from reloaded entries, keeping the query, its cursor and the selection
     pub fn reload(&mut self, entries: &[Entry]) {
         let (selected, cursor) = (self.selected, self.cursor);
-        *self = Self::new(entries, mem::take(&mut self.query));
+        *self = Self::new(entries, mem::take(&mut self.query), self.mode);
         self.cursor = cursor;
         self.select(selected);
     }
@@ -215,12 +218,17 @@ impl Finder {
     }
 
     fn refilter(&mut self) {
+        let find = match self.mode {
+            SearchMode::Keyword => find_words,
+            SearchMode::Prefix => find_prefix,
+        };
+
         self.matches = self
             .commands
             .iter()
             .enumerate()
             .filter_map(|(command_index, Command { text, .. })| {
-                let ranges = find_words(text, &self.query)?;
+                let ranges = find(text, &self.query)?;
 
                 Some(Match {
                     command_index,
@@ -286,6 +294,25 @@ fn find_words(haystack: &str, query: &str) -> Option<Vec<Range<usize>>> {
     Some(ranges)
 }
 
+/// The query at the start of the command, ignoring case and whitespace before either. Whitespace
+/// after the query also matches the end of the command, which has none after it. None when the
+/// command starts otherwise.
+fn find_prefix(haystack: &str, query: &str) -> Option<Vec<Range<usize>>> {
+    let start = haystack.len() - haystack.trim_start().len();
+    let query = query.trim_start();
+    let text = query.trim_end();
+    let end = start + prefix_len(&haystack[start..], text)?;
+    let rest = &haystack[end..];
+
+    if text.len() < query.len() && !rest.is_empty() && !rest.starts_with(char::is_whitespace) {
+        return None;
+    }
+
+    let range = (!text.is_empty()).then_some(start..end);
+
+    Some(range.into_iter().collect())
+}
+
 /// Case-insensitive substring search
 fn find(haystack: &str, needle: &str) -> Option<Range<usize>> {
     let mut starts = haystack
@@ -324,7 +351,11 @@ mod tests {
     const HISTORY: &[u8] = b"ls\npwd\nps\n";
 
     fn finder(query: &str) -> Finder {
-        Finder::new(&history::parse(HISTORY), query.to_string())
+        Finder::new(
+            &history::parse(HISTORY),
+            query.to_string(),
+            SearchMode::Keyword,
+        )
     }
 
     #[test]
@@ -518,6 +549,80 @@ mod tests {
             find_words("echo Привет Мир", "мир ПРИВЕТ").unwrap(),
             [5..17, 18..24]
         );
+    }
+
+    #[test]
+    fn finds_the_query_at_the_start_ignoring_case() {
+        assert_eq!(find_prefix("git push", "git").unwrap(), [0..3]);
+        assert_eq!(find_prefix("Git Push", "git p").unwrap(), [0..5]);
+        assert_eq!(find_prefix("sudo git push", "git"), None);
+        assert_eq!(find_prefix("git  push", "git p"), None);
+        assert_eq!(find_prefix("git", "git push"), None);
+    }
+
+    #[test]
+    fn ignores_whitespace_before_the_prefix() {
+        assert_eq!(find_prefix("ls -la", "  ls").unwrap(), [0..2]);
+        assert_eq!(find_prefix(" ls -la", "ls").unwrap(), [1..3]);
+    }
+
+    #[test]
+    fn matches_whitespace_after_the_prefix_at_a_word_end() {
+        assert_eq!(find_prefix("ls", "ls ").unwrap(), [0..2]);
+        assert_eq!(find_prefix("ls -la", "ls  ").unwrap(), [0..2]);
+        assert_eq!(find_prefix("lsof", "ls "), None);
+        assert_eq!(find_prefix("lsof", "ls").unwrap(), [0..2]);
+    }
+
+    #[test]
+    fn prefix_without_text_matches_everything() {
+        for (haystack, query) in [("ls", ""), ("ls", "   "), ("", ""), (" ls", " ")] {
+            assert_eq!(find_prefix(haystack, query).unwrap(), [], "{query:?}");
+        }
+    }
+
+    #[test]
+    fn finds_prefixes_in_any_script() {
+        assert_eq!(find_prefix("Привет мир", "привет ").unwrap(), [0..12]);
+    }
+
+    #[test]
+    fn filters_commands_by_the_search_mode() {
+        let entries = history::parse(
+            b"ls -la
+sudo ls
+lsof
+ls
+",
+        );
+        let texts = |mode| {
+            let finder = Finder::new(&entries, "ls ".to_string(), mode);
+            finder
+                .matches()
+                .iter()
+                .map(|found| finder.commands()[found.command_index].text.clone())
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(
+            texts(SearchMode::Keyword),
+            ["ls", "lsof", "sudo ls", "ls -la"]
+        );
+        assert_eq!(texts(SearchMode::Prefix), ["ls", "ls -la"]);
+    }
+
+    #[test]
+    fn keeps_the_search_mode_on_reload() {
+        let entries = history::parse(
+            b"sudo ls
+ls
+",
+        );
+        let mut finder = Finder::new(&entries, "ls".to_string(), SearchMode::Prefix);
+
+        finder.reload(&entries);
+
+        assert_eq!(finder.matches().len(), 1);
     }
 
     #[test]

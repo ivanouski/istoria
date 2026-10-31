@@ -69,7 +69,7 @@ fn run_search(search: Search) -> Result<ExitCode, String> {
         Searched::Backups => backup_source(None)?,
         Searched::Backup(label) => backup_source(Some(label))?,
     };
-    let mut finder = Finder::new(source.entries(), search.query);
+    let mut finder = Finder::new(source.entries(), search.query, config.search);
     let prompt = search.prompt.map(|text| prompt::parse(&text));
 
     let outcome =
