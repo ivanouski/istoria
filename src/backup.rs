@@ -265,8 +265,7 @@ fn insert(
     Ok(saved)
 }
 
-/// Unlinks the entries from the backup started at the time, or from every backup, and deletes
-/// those no backup has left
+/// The transaction of `Backups::delete_entries`
 fn remove(
     transaction: &Transaction,
     entries: &[&Entry],

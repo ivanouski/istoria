@@ -124,9 +124,7 @@ pub fn pick(
     }
 }
 
-/// Ends the finder with an outcome, or keeps it open with a status to show. Above the prompt line
-/// Up goes to older commands. While Ctrl-D asks about backups, only `y` deletes and any other key
-/// cancels without doing what it does.
+/// Ends the finder with an outcome, or keeps it open with a status to show
 fn handle_key(
     key: KeyEvent,
     finder: &mut Finder,
@@ -210,8 +208,7 @@ fn confirm(finder: &Finder, source: &Source) -> Option<Status> {
     )))
 }
 
-/// Deletes every occurrence of the selected command from history, or from the backups searched.
-/// Deleting from history leaves backups as they are.
+/// Deletes the selected command from history, or from the backups searched, never both
 fn delete(finder: &mut Finder, source: &mut Source) -> Option<Status> {
     let command = finder.selection()?;
     let message = format!("deleted {}", command.text);

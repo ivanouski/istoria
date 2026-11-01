@@ -1,7 +1,8 @@
 # istoria
 
-A fuzzy finder for bash history. Pick a command to put it on the prompt line, delete it from the
-history, or find it in backups of the history.
+A finder for bash history that matches words in any order and forgives typos. Pick a command to
+run it or put it on the prompt line, delete it from the history, or find it in backups that outlive
+the history.
 
 ## Install
 
@@ -42,8 +43,8 @@ HISTFILESIZE=10000
 
 ## Usage
 
-Up or Down opens istoria with the typed text as the query, Option+Up or Option+Down does the same
-in the [backups](#backups). Ctrl-P and Ctrl-N still step through the shell's history.
+Up or Down opens istoria with the typed text as the query, Alt-Up or Alt-Down (Option on a Mac)
+does the same in the [backups](#backups). Ctrl-P and Ctrl-N still step through the shell's history.
 
 Each word matches anywhere in a command, in any order, ignoring case: `push git` finds
 `git -C api push`. With `search = "prefix"` in the [config](#config), the query matches the start
@@ -81,6 +82,7 @@ keeps `›`. `ISTORIA_PROMPT`, written like `PS1`, shows in place of either:
 ISTORIA_PROMPT='\[\e[35m\]hist›\[\e[0m\] '
 ```
 
+Run directly, `istoria search` prints the picked command instead of running it.
 `istoria delete-last [N]` deletes the last N commands from history, 1 by default, and prints them.
 `istoria --help` lists every command, option and exit status.
 
@@ -112,10 +114,9 @@ $ HISTFILE=~/air_history istoria backup --host air
 
 `istoria search --backup` searches every backup, `--backup-id LABEL` one of them, with `backup›` or
 `backup:LABEL›` after the prompt. Each command shows the hosts it was backed up from at the right
-edge, unless the pane is too narrow. Option+Up and Option+Down open `--backup` the way Up opens the
-history, so Enter runs the command and Tab puts it on the line. Terminal.app needs "Use Option as
-Meta key" for them. Typed as a command, istoria only prints it. Commands
-the shell hasn't saved yet aren't backed up, see [Bash history](#bash-history).
+edge, unless the pane is too narrow. Alt-Up and Alt-Down open `--backup`, see [Usage](#usage);
+Terminal.app needs "Use Option as Meta key" for them. Commands the shell hasn't saved yet aren't
+backed up, see [Bash history](#bash-history).
 
 Ctrl-D in backups asks first, and `y` deletes the command from every backup, or only from `LABEL`
 with `--backup-id`. Any other key cancels. Ctrl-D in history leaves backups as they are.

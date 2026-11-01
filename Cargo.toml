@@ -1,8 +1,8 @@
 [package]
 name = "istoria"
-version = "0.37.3"
+version = "0.37.4"
 edition = "2024"
-description = "A fuzzy finder for bash history"
+description = "A bash history finder that forgives typos"
 license = "MIT"
 publish = false
 

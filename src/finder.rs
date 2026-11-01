@@ -39,7 +39,6 @@ pub struct Match {
 #[derive(Debug)]
 pub struct Finder {
     commands: Vec<Command>,
-    /// Whether to show a time column
     has_times: bool,
     /// The widest hosts of a command, 0 without a hosts column
     hosts_width: usize,
@@ -304,8 +303,7 @@ fn local_time(seconds: i64) -> Option<String> {
     Some(time.format(TIME_FORMAT).to_string())
 }
 
-/// Each query word's first occurrence, in any order, ignoring case, touching ranges merged, and
-/// whether a word matched with a typo, allowed by typos for a word that is missing otherwise. None
+/// Each query word's first occurrence, touching ranges merged, and whether one needed a typo. None
 /// when a word is missing.
 fn find_words(haystack: &str, query: &str, typos: bool) -> Option<(Vec<Range<usize>>, bool)> {
     let mut typo = false;
@@ -334,10 +332,8 @@ fn find_words(haystack: &str, query: &str, typos: bool) -> Option<(Vec<Range<usi
     Some((ranges, typo))
 }
 
-/// The query at the start of the command, ignoring case and whitespace before either, and whether
-/// its first word matched with a typo, allowed by typos when the query is missing otherwise.
-/// Whitespace after the query also matches the end of the command, which has none after it. None
-/// when the command starts otherwise.
+/// The query at the start of the command, and whether its first word needed a typo. Whitespace
+/// after the query also matches the command's end.
 fn find_prefix(haystack: &str, query: &str, typos: bool) -> Option<(Vec<Range<usize>>, bool)> {
     let start = haystack.len() - haystack.trim_start().len();
     let command = &haystack[start..];
@@ -369,8 +365,8 @@ fn find_typo(haystack: &str, word: &str) -> Option<Range<usize>> {
     })
 }
 
-/// Byte length of text at the start of haystack, ignoring case, its first word but for a typo, the
-/// first one that `ends_right` takes
+/// Byte length of text at the start of haystack with a typo in its first word, the first that
+/// `ends_right` takes
 fn typo_prefix_len(
     haystack: &str,
     text: &str,
@@ -405,9 +401,8 @@ fn word_starts(haystack: &str) -> impl Iterator<Item = usize> {
     })
 }
 
-/// Byte lengths of the starts of the haystack's first word that are the query word but for a typo,
-/// whole words first. One that matches only the start of the query word, a character shorter or
-/// with the last one changed, has to be the whole word, or `gix` would find `gist`.
+/// Byte lengths of the haystack's first word's starts one typo from the query word, whole words
+/// first. A shorter one, or one with the last character changed, must be a whole word.
 fn typo_lens(haystack: &str, word: &[char]) -> Vec<usize> {
     let first_word = haystack
         .split(char::is_whitespace)

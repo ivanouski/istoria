@@ -13,9 +13,7 @@ __istoria_search() {
   local line status
   local -a options=(--print-query "$@")
 
-  # istoria shows the prompt bash just cleared, ${PS1@P} needs bash 4.4. ISTORIA_PROMPT, written
-  # like PS1, shows in its place. ISTORIA_SHELL_PROMPT=false skips PS1 for ›, as PS1 runs its
-  # $(...) again, slow for a git status in a big repo. A backup search adds its label after it.
+  # ${PS1@P} needs bash 4.4, ISTORIA_SHELL_PROMPT=false keeps it from running PS1's $(...) again
   if (( BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] >= 404 )); then
     if [[ -n ${ISTORIA_PROMPT-} ]]; then
       options+=(--prompt "${ISTORIA_PROMPT@P}")
@@ -43,10 +41,8 @@ __istoria_search() {
   fi
 }
 
-# Up / Down search history with istoria, Option+Up / Option+Down every backup, Enter runs the pick.
-# Ctrl-P / Ctrl-N still step through history. The keys run a macro of two fake keys: one opens
-# istoria, the other runs the pick. No terminal sends \e[9100~, \e[9101~ or \e[9102~, so they
-# can't clash with real keys. Option+arrows send \e[1;3A, or \e\e[A with Option as Meta.
+# Each key runs a macro of two fake keys, no terminal sends them: one opens istoria, the other runs
+# the pick. Alt-arrows send \e[1;3A, or \e\e[A with Option as Meta.
 bind -x '"\e[9100~": __istoria_search'
 bind -x '"\e[9102~": __istoria_search --backup'
 bind '"\e[A": "\e[9100~\e[9101~"'

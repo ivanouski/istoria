@@ -39,8 +39,7 @@ pub enum Status {
     Confirm(String),
 }
 
-/// Returns the list's rows, the page for PgUp and PgDn. The label, like `backup`, goes before ›
-/// after the shell prompt. The offset, the first match in view, is kept between draws.
+/// Draws the pane, returns the list's rows for PgUp and PgDn
 pub fn draw(
     frame: &mut Frame,
     finder: &Finder,
@@ -346,7 +345,6 @@ fn nothing_found(finder: &Finder, layout: &RowLayout, theme: &Theme) -> Line<'st
 
 /// What every row starts with
 struct RowLayout {
-    /// Whether to show a time column
     times: bool,
     /// Before the time, or before the command without times
     indent: String,

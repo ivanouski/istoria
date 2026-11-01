@@ -94,8 +94,7 @@ fn run_search(search: Search) -> Result<ExitCode, String> {
     }
 }
 
-/// Saves the history as a backup from the host, this one by default, prints its label and how many
-/// entries it has and added
+/// Saves a backup from the host, this one by default, and prints its label and counts
 fn back_up(host: Option<String>) -> Result<(), String> {
     let history = load_history()?;
     let saved = Backups::open(&backup::path()?)?.save(

@@ -49,7 +49,6 @@ pub struct Config {
     pub preview: bool,
     /// When each command ran, if the history has times
     pub times: bool,
-    /// How the query matches commands
     pub search: SearchMode,
     /// Whether query words of 3 or more characters also match with a typo
     pub typos: bool,
