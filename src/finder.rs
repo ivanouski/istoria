@@ -12,6 +12,8 @@ use crate::history::Entry;
 
 const TIME_FORMAT: &str = "%Y-%m-%d %H:%M";
 pub const TIME_WIDTH: usize = "2023-11-14 22:13".len();
+/// Query words this long or longer match with a typo, shorter ones would match almost anything
+const TYPO_MIN_CHARS: usize = 3;
 
 /// A distinct command and every history entry holding it, most recent first
 #[derive(Debug)]
@@ -42,6 +44,8 @@ pub struct Finder {
     /// The widest hosts of a command, 0 without a hosts column
     hosts_width: usize,
     mode: SearchMode,
+    /// Whether query words match with a typo, after the commands they match without
+    typos: bool,
     query: String,
     /// Byte offset into the query, on a character boundary
     cursor: usize,
@@ -51,7 +55,7 @@ pub struct Finder {
 }
 
 impl Finder {
-    pub fn new(entries: &[Entry], query: String, mode: SearchMode) -> Self {
+    pub fn new(entries: &[Entry], query: String, mode: SearchMode, typos: bool) -> Self {
         let commands = commands(entries);
         let mut finder = Self {
             has_times: commands.iter().any(|command| command.time.is_some()),
@@ -62,6 +66,7 @@ impl Finder {
                 .unwrap_or(0),
             commands,
             mode,
+            typos,
             cursor: query.len(),
             query,
             matches: Vec::new(),
@@ -74,7 +79,7 @@ impl Finder {
     /// Rebuilds the commands from reloaded entries, keeping the query, its cursor and the selection
     pub fn reload(&mut self, entries: &[Entry]) {
         let (selected, cursor) = (self.selected, self.cursor);
-        *self = Self::new(entries, mem::take(&mut self.query), self.mode);
+        *self = Self::new(entries, mem::take(&mut self.query), self.mode, self.typos);
         self.cursor = cursor;
         self.select(selected);
     }
@@ -237,19 +242,24 @@ impl Finder {
             SearchMode::Prefix => find_prefix,
         };
 
-        self.matches = self
+        let mut matches: Vec<_> = self
             .commands
             .iter()
             .enumerate()
             .filter_map(|(command_index, Command { text, .. })| {
-                let ranges = find(text, &self.query)?;
-
-                Some(Match {
+                let (ranges, typo) = find(text, &self.query, self.typos)?;
+                let found = Match {
                     command_index,
                     ranges,
-                })
+                };
+
+                Some((found, typo))
             })
             .collect();
+        // Stable, the matches with typos go last and stay most recent first
+        matches.sort_by_key(|&(_, typo)| typo);
+
+        self.matches = matches.into_iter().map(|(found, _)| found).collect();
         self.selected = 0;
     }
 }
@@ -294,12 +304,21 @@ fn local_time(seconds: i64) -> Option<String> {
     Some(time.format(TIME_FORMAT).to_string())
 }
 
-/// Each query word's first occurrence, in any order, ignoring case, touching ranges merged. None
+/// Each query word's first occurrence, in any order, ignoring case, touching ranges merged, and
+/// whether a word matched with a typo, allowed by typos for a word that is missing otherwise. None
 /// when a word is missing.
-fn find_words(haystack: &str, query: &str) -> Option<Vec<Range<usize>>> {
+fn find_words(haystack: &str, query: &str, typos: bool) -> Option<(Vec<Range<usize>>, bool)> {
+    let mut typo = false;
     let mut found = query
         .split_whitespace()
-        .map(|word| find(haystack, word))
+        .map(|word| match find(haystack, word) {
+            Some(range) => Some(range),
+            None if typos => {
+                typo = true;
+                find_typo(haystack, word)
+            }
+            None => None,
+        })
         .collect::<Option<Vec<_>>>()?;
     found.sort_by_key(|range| range.start);
 
@@ -312,26 +331,124 @@ fn find_words(haystack: &str, query: &str) -> Option<Vec<Range<usize>>> {
         }
     }
 
-    Some(ranges)
+    Some((ranges, typo))
 }
 
-/// The query at the start of the command, ignoring case and whitespace before either. Whitespace
-/// after the query also matches the end of the command, which has none after it. None when the
-/// command starts otherwise.
-fn find_prefix(haystack: &str, query: &str) -> Option<Vec<Range<usize>>> {
+/// The query at the start of the command, ignoring case and whitespace before either, and whether
+/// its first word matched with a typo, allowed by typos when the query is missing otherwise.
+/// Whitespace after the query also matches the end of the command, which has none after it. None
+/// when the command starts otherwise.
+fn find_prefix(haystack: &str, query: &str, typos: bool) -> Option<(Vec<Range<usize>>, bool)> {
     let start = haystack.len() - haystack.trim_start().len();
+    let command = &haystack[start..];
     let query = query.trim_start();
     let text = query.trim_end();
-    let end = start + prefix_len(&haystack[start..], text)?;
-    let rest = &haystack[end..];
+    let ends_right = |len: usize| {
+        let rest = &command[len..];
 
-    if text.len() < query.len() && !rest.is_empty() && !rest.starts_with(char::is_whitespace) {
-        return None;
+        text.len() == query.len() || rest.is_empty() || rest.starts_with(char::is_whitespace)
+    };
+    let (len, typo) = match prefix_len(command, text) {
+        Some(len) => (ends_right(len).then_some(len)?, false),
+        None if typos => (typo_prefix_len(command, text, ends_right)?, true),
+        None => return None,
+    };
+    let range = (!text.is_empty()).then_some(start..start + len);
+
+    Some((range.into_iter().collect(), typo))
+}
+
+/// The first word of the haystack that starts with the query word but for a typo, see `typo_lens`
+fn find_typo(haystack: &str, word: &str) -> Option<Range<usize>> {
+    let word = typo_word(word)?;
+
+    word_starts(haystack).find_map(|start| {
+        let len = *typo_lens(&haystack[start..], &word).first()?;
+
+        Some(start..start + len)
+    })
+}
+
+/// Byte length of text at the start of haystack, ignoring case, its first word but for a typo, the
+/// first one that `ends_right` takes
+fn typo_prefix_len(
+    haystack: &str,
+    text: &str,
+    ends_right: impl Fn(usize) -> bool,
+) -> Option<usize> {
+    let (word, rest) = text.split_at(text.find(char::is_whitespace).unwrap_or(text.len()));
+    let word = typo_word(word)?;
+
+    typo_lens(haystack, &word)
+        .into_iter()
+        .filter_map(|len| Some(len + prefix_len(&haystack[len..], rest)?))
+        .find(|&len| ends_right(len))
+}
+
+/// The query word to match with a typo, case folded, None when too short for one
+fn typo_word(word: &str) -> Option<Vec<char>> {
+    let word: Vec<char> = word.chars().map(fold).collect();
+
+    (word.len() >= TYPO_MIN_CHARS).then_some(word)
+}
+
+/// Where words start: after whitespace, and letters or digits after other characters
+fn word_starts(haystack: &str) -> impl Iterator<Item = usize> {
+    let mut previous = ' ';
+
+    haystack.char_indices().filter_map(move |(start, c)| {
+        let starts = !c.is_whitespace()
+            && (previous.is_whitespace() || c.is_alphanumeric() && !previous.is_alphanumeric());
+        previous = c;
+
+        starts.then_some(start)
+    })
+}
+
+/// Byte lengths of the starts of the haystack's first word that are the query word but for a typo,
+/// whole words first. One that matches only the start of the query word, a character shorter or
+/// with the last one changed, has to be the whole word, or `gix` would find `gist`.
+fn typo_lens(haystack: &str, word: &[char]) -> Vec<usize> {
+    let first_word = haystack
+        .split(char::is_whitespace)
+        .next()
+        .unwrap_or_default();
+    let chars: Vec<(usize, char)> = first_word.char_indices().collect();
+    let folded: Vec<char> = chars.iter().map(|&(_, c)| fold(c)).collect();
+    let n = word.len();
+    let ends_word = |count: usize| chars.get(count).is_none_or(|&(_, c)| !c.is_alphanumeric());
+    let only_start = |count: usize| count < n || count == n && folded[..n - 1] == word[..n - 1];
+    let mut counts: Vec<(usize, bool)> = [n, n + 1, n - 1]
+        .into_iter()
+        .filter(|&count| count <= folded.len() && at_most_one_typo(word, &folded[..count]))
+        .map(|count| (count, ends_word(count)))
+        .filter(|&(count, whole)| whole || !only_start(count))
+        .collect();
+    counts.sort_by_key(|&(_, whole)| !whole);
+
+    counts
+        .into_iter()
+        .map(|(count, _)| chars.get(count).map_or(first_word.len(), |&(end, _)| end))
+        .collect()
+}
+
+/// Whether a and b are the same but for at most one typo: a character missing, extra, changed, or
+/// swapped with the next one
+fn at_most_one_typo(a: &[char], b: &[char]) -> bool {
+    let (short, long) = if a.len() <= b.len() { (a, b) } else { (b, a) };
+    let Some(i) = short.iter().zip(long).position(|(x, y)| x != y) else {
+        return long.len() - short.len() <= 1;
+    };
+
+    match long.len() - short.len() {
+        0 => {
+            let swapped = short.get(i + 1) == Some(&long[i]) && long.get(i + 1) == Some(&short[i]);
+
+            short[i + 1..] == long[i + 1..] || swapped && short[i + 2..] == long[i + 2..]
+        }
+        1 => short[i..] == long[i + 1..],
+        _ => false,
     }
-
-    let range = (!text.is_empty()).then_some(start..end);
-
-    Some(range.into_iter().collect())
 }
 
 /// Case-insensitive substring search
@@ -366,17 +483,22 @@ fn fold(c: char) -> char {
 #[allow(clippy::single_range_in_vec_init)]
 mod tests {
     use super::*;
-    use crate::history;
+    use crate::{history, test_util};
 
     /// Two commands match p
     const HISTORY: &[u8] = b"ls\npwd\nps\n";
 
     fn finder(query: &str) -> Finder {
-        Finder::new(
-            &history::parse(HISTORY),
-            query.to_string(),
-            SearchMode::Keyword,
-        )
+        test_util::finder(&history::parse(HISTORY), query)
+    }
+
+    /// The texts of the matches, in order
+    fn texts(finder: &Finder) -> Vec<&str> {
+        finder
+            .matches()
+            .iter()
+            .map(|found| finder.commands()[found.command_index].text.as_str())
+            .collect()
     }
 
     #[test]
@@ -515,7 +637,7 @@ mod tests {
             host_entry("pwd", &["air"]),
             host_entry("ls ", &["studio", "air"]),
         ];
-        let finder = Finder::new(&entries, String::new(), SearchMode::Keyword);
+        let finder = test_util::finder(&entries, "");
         let hosts: Vec<(&str, &str)> = finder
             .commands()
             .iter()
@@ -572,74 +694,90 @@ mod tests {
     #[test]
     fn finds_every_word_in_any_order() {
         assert_eq!(
-            find_words("git -C api push", "push git").unwrap(),
+            find_words("git -C api push", "push git", false).unwrap().0,
             [0..3, 11..15]
         );
-        assert_eq!(find_words("git -C api push", "git pull"), None);
+        assert_eq!(find_words("git -C api push", "git pull", false), None);
     }
 
     #[test]
     fn merges_words_that_overlap_or_touch() {
-        assert_eq!(find_words("git push", "gi git").unwrap(), [0..3]);
-        assert_eq!(find_words("ls ls", "ls ls").unwrap(), [0..2]);
-        assert_eq!(find_words("abc", "a bc").unwrap(), [0..3]);
-        assert_eq!(find_words("git push", "ls ls"), None);
+        assert_eq!(find_words("git push", "gi git", false).unwrap().0, [0..3]);
+        assert_eq!(find_words("ls ls", "ls ls", false).unwrap().0, [0..2]);
+        assert_eq!(find_words("abc", "a bc", false).unwrap().0, [0..3]);
+        assert_eq!(find_words("git push", "ls ls", false), None);
     }
 
     #[test]
     fn ignores_the_spaces_between_words() {
-        assert_eq!(find_words("ls -la", "  ls\t -la  ").unwrap(), [0..2, 3..6]);
-        assert_eq!(find_words("lsof", "ls ").unwrap(), [0..2]);
+        assert_eq!(
+            find_words("ls -la", "  ls\t -la  ", false).unwrap().0,
+            [0..2, 3..6]
+        );
+        assert_eq!(find_words("lsof", "ls ", false).unwrap().0, [0..2]);
     }
 
     #[test]
     fn query_without_words_matches_everything() {
         for (haystack, query) in [("ls", ""), ("ls", "   "), ("", "")] {
-            assert_eq!(find_words(haystack, query).unwrap(), [], "{query:?}");
+            assert_eq!(
+                find_words(haystack, query, false).unwrap().0,
+                [],
+                "{query:?}"
+            );
         }
     }
 
     #[test]
     fn finds_words_ignoring_case_in_any_script() {
         assert_eq!(
-            find_words("echo Привет Мир", "мир ПРИВЕТ").unwrap(),
+            find_words("echo Привет Мир", "мир ПРИВЕТ", false)
+                .unwrap()
+                .0,
             [5..17, 18..24]
         );
     }
 
     #[test]
     fn finds_the_query_at_the_start_ignoring_case() {
-        assert_eq!(find_prefix("git push", "git").unwrap(), [0..3]);
-        assert_eq!(find_prefix("Git Push", "git p").unwrap(), [0..5]);
-        assert_eq!(find_prefix("sudo git push", "git"), None);
-        assert_eq!(find_prefix("git  push", "git p"), None);
-        assert_eq!(find_prefix("git", "git push"), None);
+        assert_eq!(find_prefix("git push", "git", false).unwrap().0, [0..3]);
+        assert_eq!(find_prefix("Git Push", "git p", false).unwrap().0, [0..5]);
+        assert_eq!(find_prefix("sudo git push", "git", false), None);
+        assert_eq!(find_prefix("git  push", "git p", false), None);
+        assert_eq!(find_prefix("git", "git push", false), None);
     }
 
     #[test]
     fn ignores_whitespace_before_the_prefix() {
-        assert_eq!(find_prefix("ls -la", "  ls").unwrap(), [0..2]);
-        assert_eq!(find_prefix(" ls -la", "ls").unwrap(), [1..3]);
+        assert_eq!(find_prefix("ls -la", "  ls", false).unwrap().0, [0..2]);
+        assert_eq!(find_prefix(" ls -la", "ls", false).unwrap().0, [1..3]);
     }
 
     #[test]
     fn matches_whitespace_after_the_prefix_at_a_word_end() {
-        assert_eq!(find_prefix("ls", "ls ").unwrap(), [0..2]);
-        assert_eq!(find_prefix("ls -la", "ls  ").unwrap(), [0..2]);
-        assert_eq!(find_prefix("lsof", "ls "), None);
-        assert_eq!(find_prefix("lsof", "ls").unwrap(), [0..2]);
+        assert_eq!(find_prefix("ls", "ls ", false).unwrap().0, [0..2]);
+        assert_eq!(find_prefix("ls -la", "ls  ", false).unwrap().0, [0..2]);
+        assert_eq!(find_prefix("lsof", "ls ", false), None);
+        assert_eq!(find_prefix("lsof", "ls", false).unwrap().0, [0..2]);
     }
 
     #[test]
     fn prefix_without_text_matches_everything() {
         for (haystack, query) in [("ls", ""), ("ls", "   "), ("", ""), (" ls", " ")] {
-            assert_eq!(find_prefix(haystack, query).unwrap(), [], "{query:?}");
+            assert_eq!(
+                find_prefix(haystack, query, false).unwrap().0,
+                [],
+                "{query:?}"
+            );
         }
     }
 
     #[test]
     fn finds_prefixes_in_any_script() {
-        assert_eq!(find_prefix("Привет мир", "привет ").unwrap(), [0..12]);
+        assert_eq!(
+            find_prefix("Привет мир", "привет ", false).unwrap().0,
+            [0..12]
+        );
     }
 
     #[test]
@@ -651,20 +789,13 @@ lsof
 ls
 ",
         );
-        let texts = |mode| {
-            let finder = Finder::new(&entries, "ls ".to_string(), mode);
-            finder
-                .matches()
-                .iter()
-                .map(|found| finder.commands()[found.command_index].text.clone())
-                .collect::<Vec<_>>()
-        };
+        let finder = |mode| Finder::new(&entries, "ls ".to_string(), mode, false);
 
         assert_eq!(
-            texts(SearchMode::Keyword),
+            texts(&finder(SearchMode::Keyword)),
             ["ls", "lsof", "sudo ls", "ls -la"]
         );
-        assert_eq!(texts(SearchMode::Prefix), ["ls", "ls -la"]);
+        assert_eq!(texts(&finder(SearchMode::Prefix)), ["ls", "ls -la"]);
     }
 
     #[test]
@@ -674,11 +805,145 @@ ls
 ls
 ",
         );
-        let mut finder = Finder::new(&entries, "ls".to_string(), SearchMode::Prefix);
+        let mut finder = Finder::new(&entries, "ls".to_string(), SearchMode::Prefix, false);
 
         finder.reload(&entries);
 
         assert_eq!(finder.matches().len(), 1);
+    }
+
+    #[test]
+    fn lists_commands_matched_with_a_typo_after_the_others() {
+        let entries = history::parse(
+            b"git push
+gti status
+git log
+",
+        );
+        let finder = Finder::new(&entries, "gti".to_string(), SearchMode::Keyword, true);
+
+        assert_eq!(texts(&finder), ["gti status", "git log", "git push"]);
+    }
+
+    #[test]
+    fn matches_typos_only_when_asked() {
+        let entries = history::parse(b"git push\n");
+        let finder = |typos| Finder::new(&entries, "gti".to_string(), SearchMode::Keyword, typos);
+
+        assert_eq!(finder(true).matches().len(), 1);
+        assert!(finder(false).matches().is_empty());
+    }
+
+    #[test]
+    fn keeps_typos_on_reload() {
+        let entries = history::parse(b"git push\n");
+        let mut finder = Finder::new(&entries, "gti".to_string(), SearchMode::Keyword, true);
+
+        finder.reload(&entries);
+
+        assert_eq!(finder.matches().len(), 1);
+    }
+
+    #[test]
+    fn tells_one_typo_from_more() {
+        let chars = |text: &str| text.chars().collect::<Vec<_>>();
+        let one_typo = |a, b| at_most_one_typo(&chars(a), &chars(b));
+
+        for (a, b) in [
+            ("git", "git"),
+            ("gti", "git"),
+            ("igt", "git"),
+            ("gut", "git"),
+            ("giit", "git"),
+            ("gt", "git"),
+            ("dcker", "docker"),
+        ] {
+            assert!(one_typo(a, b), "{a} {b}");
+            assert!(one_typo(b, a), "{b} {a}");
+        }
+
+        for (a, b) in [
+            ("tig", "git"),
+            ("gitxx", "git"),
+            ("g", "git"),
+            ("gxix", "git"),
+        ] {
+            assert!(!one_typo(a, b), "{a} {b}");
+            assert!(!one_typo(b, a), "{b} {a}");
+        }
+    }
+
+    #[test]
+    fn finds_words_with_a_typo_at_the_start_of_words() {
+        let words = |haystack, query| find_words(haystack, query, true);
+
+        assert_eq!(words("sudo git push", "gti"), Some((vec![5..8], true)));
+        assert_eq!(
+            words("sudo git push", "git psuh"),
+            Some((vec![5..8, 9..13], true))
+        );
+        assert_eq!(
+            words("docker-compose up", "dokcer comp"),
+            Some((vec![0..6, 7..11], true))
+        );
+        assert_eq!(words("docker ps", "dcker"), Some((vec![0..6], true)));
+        assert_eq!(
+            words("git push --force", "--forse"),
+            Some((vec![9..16], true))
+        );
+        assert_eq!(words("echo Привет", "пирвет"), Some((vec![5..17], true)));
+        assert_eq!(words("git push", "git"), Some((vec![0..3], false)));
+        assert_eq!(words("legit", "lgeit"), Some((vec![0..5], true)));
+        assert_eq!(words("legit", "gti"), None);
+    }
+
+    #[test]
+    fn finds_words_shorter_by_a_typo_only_whole() {
+        assert_eq!(
+            find_words("git push", "giit", true),
+            Some((vec![0..3], true))
+        );
+        assert_eq!(find_words("gist", "gti", true), None);
+    }
+
+    #[test]
+    fn finds_words_with_the_last_character_changed_only_whole() {
+        assert_eq!(find_words("gist", "gix", true), None);
+        assert_eq!(
+            find_words("git push", "gix", true),
+            Some((vec![0..3], true))
+        );
+        assert_eq!(find_words("ls --force", "--x", true), None);
+    }
+
+    #[test]
+    fn highlights_whole_words_before_other_typos() {
+        assert_eq!(
+            find_words("docker ps", "dockr", true),
+            Some((vec![0..6], true))
+        );
+    }
+
+    #[test]
+    fn finds_short_words_only_without_typos() {
+        assert_eq!(find_words("ls -la", "sl", true), None);
+        assert_eq!(find_words("ls -la", "sl gti", true), None);
+    }
+
+    #[test]
+    fn finds_the_prefix_with_a_typo_in_its_first_word() {
+        let prefix = |haystack, query| find_prefix(haystack, query, true);
+
+        assert_eq!(prefix("git push", "gti"), Some((vec![0..3], true)));
+        assert_eq!(prefix("git push", "gti pu"), Some((vec![0..6], true)));
+        assert_eq!(prefix(" docker ps", "dcker p"), Some((vec![1..9], true)));
+        assert_eq!(prefix("git push", "gti "), Some((vec![0..3], true)));
+        assert_eq!(prefix("gitk", "gti "), None);
+        assert_eq!(prefix("docker ps", "dockr "), Some((vec![0..6], true)));
+        assert_eq!(prefix("abdcd x", "abcd "), Some((vec![0..5], true)));
+        assert_eq!(prefix("git push", "git psuh"), None);
+        assert_eq!(prefix("sudo git push", "gti"), None);
+        assert_eq!(prefix("git push", "git"), Some((vec![0..3], false)));
     }
 
     #[test]

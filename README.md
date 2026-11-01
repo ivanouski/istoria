@@ -50,6 +50,13 @@ Each word matches anywhere in a command, in any order, ignoring case: `push git`
 of a command instead: `git` finds `git push` but not `sudo git push`. A space after the query
 ends a word there, so `ls ` finds `ls` and `ls -la` but not `lsof`.
 
+A word of 3 or more characters also matches the start of a word in a command with one typo: a
+character missing, extra, changed, or swapped with the next one. `gti` finds `git push` and `dokcer
+comp` finds `docker compose up`, listed after the commands that match without typos. A match that is
+short a character or has the last one changed has to be a whole word, so `giit` and `gix` find `git`
+but not `gist`. With `search = "prefix"`, only the first word gets a typo. `typos = false` in the
+config turns them off.
+
 | Key                           | Action                                   |
 | ----------------------------- | ---------------------------------------- |
 | Up, Down                      | move the selection (also Ctrl-P, Ctrl-N) |
@@ -125,6 +132,7 @@ border  = false     # a line on the far edge of the pane
 preview = false     # the selected command in full when its row is cut
 times   = true      # when each command ran, if the history has times
 search  = "keyword" # words anywhere, or "prefix": the start of commands
+typos   = true      # words of 3+ characters also match with one typo, listed after
 [colors]
 prompt   = { fg = "blue", bold = true }
 backup   = "yellow"        # the prompt searching backups

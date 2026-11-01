@@ -19,6 +19,20 @@ class IstoriaListingTest < IstoriaTestCase
     assert_equal ['› clau', 'Claude', 'claude --resume'], pane
   end
 
+  def test_lists_matches_with_a_typo_after_the_others
+    File.write(@history, "git push\ngti status\ngit log\n")
+    start('gti')
+
+    assert_equal ['› gti', 'gti status', 'git log', 'git push'], pane
+  end
+
+  def test_typos_can_be_turned_off
+    write_config("typos = false\n")
+    start('gti')
+
+    assert_equal ['› gti', 'no matches'], pane
+  end
+
   def test_typing_narrows_the_list
     start('clau')
     @session.type('de --')

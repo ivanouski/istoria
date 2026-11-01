@@ -661,28 +661,19 @@ mod tests {
     use ratatui::style::{Color, Modifier};
 
     use super::*;
-    use crate::config::SearchMode;
     use crate::history::{self, Entry};
-    use crate::prompt;
+    use crate::{prompt, test_util};
 
     const DIVIDER_ROW: u16 = 1;
     const FIRST_ROW: u16 = 2;
 
     fn finder(content: &str) -> Finder {
-        Finder::new(
-            &history::parse(content.as_bytes()),
-            "ls".to_string(),
-            SearchMode::Keyword,
-        )
+        test_util::finder(&history::parse(content.as_bytes()), "ls")
     }
 
     /// The cursor at the end of the query, or at its start for home
     fn query_finder(query: &str, home: bool) -> Finder {
-        let mut finder = Finder::new(
-            &history::parse(b"ls\n"),
-            query.to_string(),
-            SearchMode::Keyword,
-        );
+        let mut finder = test_util::finder(&history::parse(b"ls\n"), query);
         if home {
             finder.home();
         }
@@ -903,11 +894,7 @@ mod tests {
 
     #[test]
     fn says_so_where_the_commands_would_start_when_nothing_matches() {
-        let finder = Finder::new(
-            &history::parse(HISTORY.as_bytes()),
-            "pwd".to_string(),
-            SearchMode::Keyword,
-        );
+        let finder = test_util::finder(&history::parse(HISTORY.as_bytes()), "pwd");
         let theme = Theme::default();
         let buffer = Render::new(&finder).run().buffer;
 
@@ -1256,7 +1243,7 @@ mod tests {
             })
             .collect();
 
-        Finder::new(&entries, String::new(), SearchMode::Keyword)
+        test_util::finder(&entries, "")
     }
 
     #[test]
@@ -1404,11 +1391,7 @@ mod tests {
 
     #[test]
     fn highlights_the_words_of_the_query_in_a_row() {
-        let finder = Finder::new(
-            &history::parse(b"git -C api push\n"),
-            "push git".to_string(),
-            SearchMode::Keyword,
-        );
+        let finder = test_util::finder(&history::parse(b"git -C api push\n"), "push git");
         let buffer = Render::new(&finder).run().buffer;
         let cell = |x| &buffer[(x, FIRST_ROW)];
 
@@ -1546,11 +1529,7 @@ mod tests {
 
     #[test]
     fn says_so_next_to_the_divider_when_nothing_matches_above_the_prompt_line() {
-        let finder = Finder::new(
-            &history::parse(HISTORY.as_bytes()),
-            "pwd".to_string(),
-            SearchMode::Keyword,
-        );
+        let finder = test_util::finder(&history::parse(HISTORY.as_bytes()), "pwd");
         let buffer = Render::new(&finder).above().height(5).run().buffer;
 
         assert_eq!(

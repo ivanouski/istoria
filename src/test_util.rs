@@ -6,6 +6,15 @@ use std::path::PathBuf;
 use std::process;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use crate::config::SearchMode;
+use crate::finder::Finder;
+use crate::history::Entry;
+
+/// Searching words without typos, the matching most tests are not about
+pub fn finder(entries: &[Entry], query: &str) -> Finder {
+    Finder::new(entries, query.to_string(), SearchMode::Keyword, false)
+}
+
 /// A file in the temp directory, removed when dropped, also when the test fails
 pub struct TempFile {
     pub path: PathBuf,

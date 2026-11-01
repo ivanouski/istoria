@@ -20,6 +20,7 @@ border  = false     # a line on the far edge of the pane
 preview = false     # the selected command in full when its row is cut
 times   = true      # when each command ran, if the history has times
 search  = "keyword" # words anywhere, or "prefix": the start of commands
+typos   = true      # words of 3+ characters also match with one typo, listed after
 [colors]
 prompt   = { fg = "blue", bold = true }
 backup   = "yellow"        # the prompt searching backups
@@ -50,6 +51,8 @@ pub struct Config {
     pub times: bool,
     /// How the query matches commands
     pub search: SearchMode,
+    /// Whether query words of 3 or more characters also match with a typo
+    pub typos: bool,
     pub colors: Theme,
 }
 
@@ -82,6 +85,7 @@ impl Default for Config {
             preview: false,
             times: true,
             search: SearchMode::default(),
+            typos: true,
             colors: Theme::default(),
         }
     }
@@ -290,6 +294,7 @@ mod tests {
         assert_eq!(config.preview, Config::default().preview);
         assert_eq!(config.times, Config::default().times);
         assert_eq!(config.search, Config::default().search);
+        assert_eq!(config.typos, Config::default().typos);
         assert_eq!(config.colors, Theme::default());
     }
 
@@ -332,6 +337,13 @@ mod tests {
         assert!(Config::parse("").unwrap().times);
         assert!(!Config::parse("times = false\n").unwrap().times);
         assert!(error("times = \"no\"\n").contains("expected a boolean"));
+    }
+
+    #[test]
+    fn reads_the_typos() {
+        assert!(Config::parse("").unwrap().typos);
+        assert!(!Config::parse("typos = false\n").unwrap().typos);
+        assert!(error("typos = \"no\"\n").contains("expected a boolean"));
     }
 
     #[test]

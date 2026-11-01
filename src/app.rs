@@ -261,8 +261,7 @@ mod tests {
     use std::fs;
 
     use super::*;
-    use crate::config::SearchMode;
-    use crate::test_util::{TempDir, TempFile};
+    use crate::test_util::{self, TempDir, TempFile};
     use crate::{backup, history};
 
     /// The finder lists the commands most recent first: echo, pwd, ls
@@ -293,7 +292,7 @@ mod tests {
         fn open(name: &str) -> Self {
             let file = TempFile::new(&format!("keys-{name}"), HISTORY);
             let history = History::load(&file.path).unwrap();
-            let finder = Finder::new(history.entries(), String::new(), SearchMode::Keyword);
+            let finder = test_util::finder(history.entries(), "");
 
             Self {
                 file,
@@ -319,7 +318,7 @@ mod tests {
 
             let started_at = first.then_some(START);
             let entries = backups.entries(started_at).unwrap();
-            session.finder = Finder::new(&entries, String::new(), SearchMode::Keyword);
+            session.finder = test_util::finder(&entries, "");
             session.source = Source::Backups {
                 backups: Some(backups),
                 entries,
