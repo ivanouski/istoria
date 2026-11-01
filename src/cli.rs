@@ -11,7 +11,8 @@ Commands:
   search [OPTIONS] [QUERY]  search bash history and print the chosen command
   delete-last [N]           delete the last N commands from history, 1 by default
   init-config               write the default config, unless it exists
-  backup                    save the commands of $HISTFILE in a backup
+  backup [--host NAME]      save the commands of $HISTFILE in a backup, from host
+                            NAME instead of this one
   backup list               list the backups, oldest first
   backup delete LABEL       delete a backup
 
@@ -67,13 +68,16 @@ const BACKUP_LABEL: &str = "--backup-id takes a backup label";
 const ONE_BACKUP_LABEL: &str = "--backup-id takes one backup label";
 const BACKUP_AND_LABEL: &str = "--backup and --backup-id can't be used together";
 const DELETE_BACKUP_LABEL: &str = "backup delete takes a backup label";
+const HOST_NAME: &str = "--host takes a host name";
+const ONE_HOST_NAME: &str = "--host takes one host name";
 
 #[derive(Debug, PartialEq)]
 pub enum Args {
     Search(Search),
     DeleteLast(usize),
     InitConfig,
-    Backup,
+    /// The host to save the backup from, this one when None
+    Backup(Option<String>),
     BackupList,
     /// The label of the backup
     BackupDelete(String),
@@ -183,22 +187,44 @@ fn parse_delete_last(args: &[OsString]) -> Result<Args, String> {
     }
 }
 
-/// The arguments after `backup`: nothing, or `list` or `delete` and theirs
+/// The arguments after `backup`: its options, or `list` or `delete` and theirs
 fn parse_backup(args: &[OsString]) -> Result<Args, String> {
-    let Some((command, args)) = args.split_first() else {
-        return Ok(Args::Backup);
+    let Some((command, rest)) = args.split_first() else {
+        return Ok(Args::Backup(None));
     };
 
     let command = command.to_string_lossy();
 
     match command.as_ref() {
-        "list" => parse_alone(args, Args::BackupList, "backup list"),
-        "delete" => match args {
+        "list" => parse_alone(rest, Args::BackupList, "backup list"),
+        "delete" => match rest {
             [arg] => parse_one(arg, |label| parse_label(label).map(Args::BackupDelete)),
             _ => Err(usage_error(DELETE_BACKUP_LABEL)),
         },
+        "--host" => parse_backup_options(args),
         _ => unknown(&command, "backup command"),
     }
+}
+
+/// The options of `backup` saving a backup
+fn parse_backup_options(args: &[OsString]) -> Result<Args, String> {
+    let mut host = None;
+    let mut args = args.iter();
+
+    while let Some(arg) = args.next() {
+        let arg = arg.to_string_lossy();
+
+        match arg.as_ref() {
+            "--host" if host.is_some() => return Err(usage_error(ONE_HOST_NAME)),
+            "--host" => match args.next() {
+                Some(name) => host = Some(parse_host(&name.to_string_lossy())?),
+                None => return Err(usage_error(HOST_NAME)),
+            },
+            _ => return unknown(&arg, "backup argument"),
+        }
+    }
+
+    Ok(Args::Backup(host))
 }
 
 /// The arguments after a command that takes none
@@ -246,6 +272,13 @@ fn parse_label(label: &str) -> Result<String, String> {
     match backup::parse_label(label) {
         Some(_) => Ok(label.to_string()),
         None => Err(usage_error(&format!("invalid backup label: {label}"))),
+    }
+}
+
+fn parse_host(name: &str) -> Result<String, String> {
+    match backup::parse_host(name) {
+        Some(host) => Ok(host.to_string()),
+        None => Err(usage_error(&format!("invalid host name: {name:?}"))),
     }
 }
 
@@ -485,7 +518,7 @@ mod tests {
 
     #[test]
     fn reads_the_backup_commands() {
-        assert_eq!(parse(&["backup"]), Ok(Args::Backup));
+        assert_eq!(parse(&["backup"]), Ok(Args::Backup(None)));
         assert_eq!(parse(&["backup", "list"]), Ok(Args::BackupList));
         assert_eq!(
             parse(&["backup", "delete", LABEL]),
@@ -509,6 +542,52 @@ mod tests {
         assert_eq!(
             error(&["backup", "delete", "2026"]),
             "invalid backup label: 2026"
+        );
+    }
+
+    #[test]
+    fn backs_up_from_another_host() {
+        assert_eq!(
+            parse(&["backup", "--host", "air.local"]),
+            Ok(Args::Backup(Some("air".to_string())))
+        );
+        assert_eq!(
+            parse(&["backup", "--host", "air", "--help"]),
+            Ok(Args::Help)
+        );
+    }
+
+    #[test]
+    fn rejects_host_options_without_one_name() {
+        assert_eq!(error(&["backup", "--host"]), HOST_NAME);
+        assert_eq!(
+            error(&["backup", "--host", "air", "--host", "mac"]),
+            ONE_HOST_NAME
+        );
+        assert_eq!(error(&["backup", "--host", ""]), r#"invalid host name: """#);
+        assert_eq!(
+            error(&["backup", "--host", "air\tmac"]),
+            r#"invalid host name: "air\tmac""#
+        );
+        assert_eq!(
+            error(&["backup", "--host", "--help"]),
+            r#"invalid host name: "--help""#
+        );
+        assert_eq!(
+            error(&["backup", "--host", "Studio Mac"]),
+            r#"invalid host name: "Studio Mac""#
+        );
+        assert_eq!(
+            error(&["backup", "--host", "air", "x"]),
+            "invalid backup argument: x"
+        );
+        assert_eq!(
+            error(&["backup", "--host", "air", "-x"]),
+            "invalid option: -x"
+        );
+        assert_eq!(
+            error(&["backup", "list", "--host"]),
+            "backup list takes no arguments"
         );
     }
 

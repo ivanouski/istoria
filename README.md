@@ -93,6 +93,15 @@ $ istoria backup list
 $ istoria backup delete 20261029-090000
 ```
 
+A backup's host is this one's name up to the first dot. `--host NAME` saves it from another host,
+like the history of another laptop copied over. `NAME` is cut at the first dot the same way, and
+takes letters, digits, `-` and `_`:
+
+```console
+$ HISTFILE=~/air_history istoria backup --host air
+20261030-150012  3120 entries, 912 new
+```
+
 `istoria search --backup` searches every backup, `--backup-id LABEL` one of them, with `backup›` or
 `backup:LABEL›` after the prompt. Option+Up and Option+Down open `--backup` the way Up opens the
 history, so Enter runs the command and Tab puts it on the line. Terminal.app needs "Use Option as

@@ -88,6 +88,23 @@ class IstoriaCompletionTest < IstoriaTestCase
     assert_empty complete('backup', 'list', '')
   end
 
+  def test_offers_the_host_option_of_backup
+    assert_equal %w[--host], complete('backup', '-')
+    assert_equal %w[--host], complete('backup', '--')
+    assert_empty complete('backup', '--host', 'air', '')
+  end
+
+  def test_offers_the_hosts_backed_up_after_host
+    assert_empty complete('backup', '--host', '')
+
+    back_up('--host', 'mac')
+    back_up('--host', 'air')
+    back_up('--host', 'mac')
+
+    assert_equal %w[air mac], complete('backup', '--host', '')
+    assert_equal %w[mac], complete('backup', '--host', 'm')
+  end
+
   def test_offers_the_labels_of_the_backups
     assert_empty complete('backup', 'delete', '')
 

@@ -316,9 +316,23 @@ pub fn path() -> Result<PathBuf, String> {
 /// The host name up to the first dot
 pub fn host() -> String {
     let uname = rustix::system::uname();
-    let name = uname.nodename().to_string_lossy();
 
-    name.split('.').next().unwrap_or_default().to_string()
+    short_host(&uname.nodename().to_string_lossy()).to_string()
+}
+
+/// A host name up to the first dot, None unless it is letters, digits, `-`, `_` and dots, not
+/// starting with `-`. It stays one word in completion, and an option in its place is rejected.
+pub fn parse_host(name: &str) -> Option<&str> {
+    let valid = !name.starts_with('-')
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'));
+
+    Some(short_host(name)).filter(|host| valid && !host.is_empty())
+}
+
+fn short_host(name: &str) -> &str {
+    name.split('.').next().unwrap_or_default()
 }
 
 /// When the backup started, in local time: `20261030-142501`
@@ -597,6 +611,27 @@ mod tests {
             "20261030-142501-mac",
         ] {
             assert_eq!(parse_label(label), None, "{label}");
+        }
+    }
+
+    #[test]
+    fn reads_host_names_up_to_the_first_dot() {
+        assert_eq!(parse_host("air"), Some("air"));
+        assert_eq!(parse_host("air.local"), Some("air"));
+        assert_eq!(parse_host("Studio-Mac_2.lan"), Some("Studio-Mac_2"));
+
+        for name in [
+            "",
+            ".local",
+            "-x",
+            "--help",
+            "Studio Mac",
+            "mac*",
+            "air.lo cal",
+            "air\tmac",
+            "mäc",
+        ] {
+            assert_eq!(parse_host(name), None, "{name}");
         }
     }
 

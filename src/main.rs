@@ -52,7 +52,7 @@ fn run() -> Result<ExitCode, String> {
         Args::Search(search) => return run_search(search),
         Args::DeleteLast(count) => delete_last(count)?,
         Args::InitConfig => print_line(&Config::init()?.display().to_string())?,
-        Args::Backup => back_up()?,
+        Args::Backup(host) => back_up(host)?,
         Args::BackupList => list_backups()?,
         Args::BackupDelete(label) => delete_backup(&label)?,
         Args::Help => print(&cli::help())?,
@@ -94,12 +94,13 @@ fn run_search(search: Search) -> Result<ExitCode, String> {
     }
 }
 
-/// Saves the history as a backup, prints its label and how many entries it has and added
-fn back_up() -> Result<(), String> {
+/// Saves the history as a backup from the host, this one by default, prints its label and how many
+/// entries it has and added
+fn back_up(host: Option<String>) -> Result<(), String> {
     let history = load_history()?;
     let saved = Backups::open(&backup::path()?)?.save(
         history.entries(),
-        &backup::host(),
+        &host.unwrap_or_else(backup::host),
         Utc::now().timestamp(),
     )?;
 

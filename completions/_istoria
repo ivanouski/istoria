@@ -55,16 +55,27 @@ _istoria_search() {
   [[ -z "${backup}" ]] && candidates+=(--backup --backup-id)
 }
 
+# The backup commands or --host, then a label after delete, and the hosts backed up after --host
 _istoria_backup() {
   if (( COMP_CWORD == 2 )); then
-    candidates=(list delete)
-  elif (( COMP_CWORD == 3 )) && [[ "${COMP_WORDS[2]}" == delete ]]; then
-    _istoria_labels
+    case "${current}" in
+      -*) candidates=(--host) ;;
+      *) candidates=(list delete) ;;
+    esac
+  elif (( COMP_CWORD == 3 )); then
+    case "${COMP_WORDS[2]}" in
+      delete) _istoria_labels ;;
+      --host) _istoria_hosts ;;
+    esac
   fi
 }
 
 _istoria_labels() {
   candidates=( $(istoria backup list 2> /dev/null | cut -f1) )
+}
+
+_istoria_hosts() {
+  candidates=( $(istoria backup list 2> /dev/null | cut -f2 | sort -u) )
 }
 
 complete -F _istoria istoria

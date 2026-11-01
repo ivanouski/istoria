@@ -142,9 +142,9 @@ class IstoriaTestCase < Minitest::Test
 
   # Backs up the history, returns the label and the counts. A backup waits for the next second, as
   # two in one second would have the same label.
-  def back_up
+  def back_up(*)
     sleep(0.05) until Time.now.to_i > @backed_up_at.to_i
-    stdout, stderr, status = run_istoria('backup')
+    stdout, stderr, status = run_istoria('backup', *)
     @backed_up_at = Time.now.to_i
 
     assert status.success?, stderr

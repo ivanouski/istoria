@@ -22,6 +22,16 @@ class IstoriaBackupTest < IstoriaTestCase
     assert_equal ["#{second}\t#{HOST}\t2\n", '', 0], list_backups
   end
 
+  def test_backs_up_the_history_of_another_host
+    File.write(@history, "#1\nls\n")
+    first, = back_up
+    File.write(@history, "#1\nls\n#2\nssh mac\n")
+    second, counts = back_up('--host', 'air.local')
+
+    assert_equal '2 entries, 1 new', counts
+    assert_equal ["#{first}\t#{HOST}\t1\n#{second}\tair\t2\n", '', 0], list_backups
+  end
+
   def test_searches_every_backup_or_one
     File.write(@history, "echo secret\nls\n")
     first, = back_up
