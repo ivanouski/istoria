@@ -16,17 +16,20 @@ pub struct Entry {
     pub text: String,
     /// From the `#<epoch>` line bash writes with HISTTIMEFORMAT
     pub time: Option<i64>,
+    /// The hosts of the backups holding it, none in the history file
+    pub hosts: Vec<String>,
     /// Bytes in the file, timestamp line and newline included
     bytes: Range<usize>,
 }
 
 impl Entry {
     /// An entry from elsewhere than the file, like a backup, which can't be deleted from it
-    pub fn new(original: String, time: Option<i64>) -> Self {
+    pub fn new(original: String, time: Option<i64>, hosts: Vec<String>) -> Self {
         Self {
             text: printable(&original),
             original,
             time,
+            hosts,
             bytes: 0..0,
         }
     }
@@ -104,6 +107,7 @@ impl EntryLines {
             original: original.into_owned(),
             text,
             time,
+            hosts: Vec::new(),
             bytes: start..self.command.end,
         })
     }

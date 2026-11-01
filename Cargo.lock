@@ -373,7 +373,7 @@ dependencies = [
 
 [[package]]
 name = "istoria"
-version = "0.35.1"
+version = "0.36.1"
 dependencies = [
  "chrono",
  "ratatui",

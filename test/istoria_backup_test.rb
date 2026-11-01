@@ -1,11 +1,8 @@
 # frozen_string_literal: true
 
-require 'socket'
 require_relative 'istoria_test_case'
 
 class IstoriaBackupTest < IstoriaTestCase
-  HOST = Socket.gethostname.split('.').first
-
   def test_backs_up_lists_and_deletes_backups
     File.write(@history, "#1\nls\n#2\npwd\n")
     first, = back_up
@@ -39,13 +36,23 @@ class IstoriaBackupTest < IstoriaTestCase
     back_up
     start('--backup')
 
-    assert_equal ['backup›', 'pwd', 'ls', 'echo secret'], pane
+    assert_equal ['backup›', *['pwd', 'ls', 'echo secret'].map { |command| backup_row(command) }], pane
     assert_color '38;5;3'
 
     @session.close
     start('--backup-id', first)
 
-    assert_equal ["backup:#{first}›", 'ls', 'echo secret'], pane
+    assert_equal ["backup:#{first}›", backup_row('ls'), backup_row('echo secret')], pane
+  end
+
+  def test_shows_the_hosts_of_each_command
+    File.write(@history, "ls\npwd\n")
+    back_up('--host', 'mac')
+    File.write(@history, "ls\ncd\n")
+    back_up('--host', 'air')
+    start('--backup')
+
+    assert_equal ['backup›', backup_row('cd', 'air'), backup_row('pwd', 'mac'), backup_row('ls', 'air,mac')], pane
   end
 
   def test_deletes_from_every_backup_after_y

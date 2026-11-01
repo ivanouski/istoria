@@ -15,6 +15,11 @@ use crate::finder::{Command, Finder, Match, TIME_WIDTH};
 /// Before rows that don't line up under the query
 const INDENT: usize = 2;
 const TIME_COLUMN: usize = TIME_WIDTH + 2;
+/// Most columns of the hosts at the right edge, before the gap after the command
+const MAX_HOSTS_WIDTH: usize = 20;
+const HOSTS_GAP: usize = 2;
+/// Left for the command next to the hosts, else they aren't shown
+const MIN_COMMAND_WIDTH: usize = 20;
 const ELLIPSIS: &str = "…";
 const NO_MATCHES: &str = "no matches";
 const NO_COMMANDS: &str = "no commands";
@@ -54,7 +59,12 @@ pub fn draw(
         && !prompt.is_some_and(|prompt| too_wide(prompt, area.width));
     let prompt_line = prompt_line(shell_prompt, label, theme);
     // Under the query after a shell prompt, which a label moves along
-    let layout = RowLayout::new(times, shell_prompt.map(|_| prompt_line.width()), area.width);
+    let layout = RowLayout::new(
+        times,
+        shell_prompt.map(|_| prompt_line.width()),
+        area.width,
+        finder.hosts_width(),
+    );
     let [prompt_area, divider_area, body] = split(area, list);
     let (body, border_area) = split_border(body, config.border, list);
     let preview = config
@@ -342,17 +352,27 @@ struct RowLayout {
     indent: String,
     /// Left for the command and its number of runs
     command_width: usize,
+    /// Of the hosts at the right edge, 0 without them
+    hosts_width: usize,
+    pane_width: usize,
 }
 
 impl RowLayout {
-    fn new(times: bool, prompt_width: Option<usize>, pane_width: u16) -> Self {
+    /// The hosts take up to their widest, when that leaves the command room
+    fn new(times: bool, prompt_width: Option<usize>, pane_width: u16, hosts_width: usize) -> Self {
         let time_width = if times { TIME_COLUMN } else { 0 };
         let column = command_column(prompt_width, time_width);
+        let pane_width = usize::from(pane_width);
+        let room = pane_width.saturating_sub(column);
+        let hosts_width = Some(hosts_width.min(MAX_HOSTS_WIDTH))
+            .filter(|&width| width > 0 && room >= MIN_COMMAND_WIDTH + HOSTS_GAP + width);
 
         Self {
             times,
             indent: " ".repeat(column - time_width),
-            command_width: usize::from(pane_width).saturating_sub(column),
+            command_width: hosts_width.map_or(room, |width| room - HOSTS_GAP - width),
+            hosts_width: hosts_width.unwrap_or(0),
+            pane_width,
         }
     }
 
@@ -410,6 +430,15 @@ fn row<'a>(
 
     if let Some(runs) = runs(command) {
         spans.push(Span::styled(runs, dim));
+    }
+
+    if layout.hosts_width > 0 {
+        // At the right edge, the command fits before the gap
+        let hosts = cut(&command.hosts, layout.hosts_width);
+        let used: usize = spans.iter().map(Span::width).sum();
+        let padding = layout.pane_width.saturating_sub(used + hosts.width());
+        spans.push(Span::raw(" ".repeat(padding)));
+        spans.push(Span::styled(hosts, dim));
     }
 
     // Styled per item, a list highlight style would cover the match
@@ -633,7 +662,8 @@ mod tests {
 
     use super::*;
     use crate::config::SearchMode;
-    use crate::{history, prompt};
+    use crate::history::{self, Entry};
+    use crate::prompt;
 
     const DIVIDER_ROW: u16 = 1;
     const FIRST_ROW: u16 = 2;
@@ -1214,6 +1244,66 @@ mod tests {
         // Still under the query
         assert_eq!(first_command_column(&after_prompt), prompt.len());
         assert_eq!(text(&after_prompt, FIRST_ROW).trim(), "ls");
+    }
+
+    /// Commands from backups with their hosts, oldest first, without a query
+    fn backup_finder(entries: &[(&str, &[&str])]) -> Finder {
+        let entries: Vec<Entry> = entries
+            .iter()
+            .map(|(command, hosts)| {
+                let hosts = hosts.iter().map(|host| (*host).to_string()).collect();
+                Entry::new((*command).to_string(), None, hosts)
+            })
+            .collect();
+
+        Finder::new(&entries, String::new(), SearchMode::Keyword)
+    }
+
+    #[test]
+    fn shows_the_hosts_at_the_right_edge_dimmed_off_the_selected_row() {
+        let finder = backup_finder(&[("ls -la", &["mac", "air"]), ("ls", &["mac"])]);
+        let buffer = Render::new(&finder).run().buffer;
+
+        assert_eq!(
+            text(&buffer, FIRST_ROW),
+            format!("  ls{}mac", " ".repeat(33))
+        );
+        assert_eq!(
+            text(&buffer, FIRST_ROW + 1),
+            format!("  ls -la{}air,mac", " ".repeat(25))
+        );
+        assert!((37..40).all(|x| buffer[(x, FIRST_ROW)].fg == Color::Reset));
+        assert!((33..40).all(|x| buffer[(x, FIRST_ROW + 1)].fg == Color::DarkGray));
+    }
+
+    #[test]
+    fn cuts_hosts_wider_than_their_column() {
+        let finder = backup_finder(&[("ls", &["mac", "a-very-long-host-name"])]);
+        let buffer = Render::new(&finder).width(50).run().buffer;
+
+        assert!(text(&buffer, FIRST_ROW).ends_with(" a-very-long-host-na…"));
+    }
+
+    #[test]
+    fn cuts_the_command_before_the_hosts() {
+        let command = "echo one two three four five six seven eight nine";
+        let finder = backup_finder(&[(command, &["mac"])]);
+        let buffer = Render::new(&finder).run().buffer;
+
+        assert_eq!(
+            text(&buffer, FIRST_ROW),
+            format!("  {}…  mac", &command[..32])
+        );
+    }
+
+    #[test]
+    fn leaves_the_hosts_out_of_a_pane_too_narrow_for_the_command() {
+        let finder = backup_finder(&[("ls", &["mac"])]);
+        let narrow = Render::new(&finder).width(26).run().buffer;
+        let wide_enough = Render::new(&finder).width(27).run().buffer;
+
+        assert_eq!(text(&narrow, FIRST_ROW).trim_end(), "  ls");
+        assert!(text(&wide_enough, FIRST_ROW).ends_with("  mac"));
     }
 
     /// Most recent first, a command of 54 columns run twice, matched by ls at its end

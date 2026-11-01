@@ -94,8 +94,9 @@ $ istoria backup delete 20261029-090000
 ```
 
 A backup's host is this one's name up to the first dot. `--host NAME` saves it from another host,
-like the history of another laptop copied over. `NAME` is cut at the first dot the same way, and
-takes letters, digits, `-` and `_`:
+like the history of another laptop copied over, and is cut at the first dot the same way. Names
+take letters, digits, `-`, `_` and dots; when this host's name has anything else, give one with
+`--host`:
 
 ```console
 $ HISTFILE=~/air_history istoria backup --host air
@@ -103,7 +104,8 @@ $ HISTFILE=~/air_history istoria backup --host air
 ```
 
 `istoria search --backup` searches every backup, `--backup-id LABEL` one of them, with `backup›` or
-`backup:LABEL›` after the prompt. Option+Up and Option+Down open `--backup` the way Up opens the
+`backup:LABEL›` after the prompt. Each command shows the hosts it was backed up from at the right
+edge, unless the pane is too narrow. Option+Up and Option+Down open `--backup` the way Up opens the
 history, so Enter runs the command and Tab puts it on the line. Terminal.app needs "Use Option as
 Meta key" for them. Typed as a command, istoria only prints it. Commands
 the shell hasn't saved yet aren't backed up, see [Bash history](#bash-history).
@@ -130,7 +132,7 @@ count    = "dark-gray"     # matches/commands
 deleted  = "green"         # the status after Ctrl-D
 error    = "red"           # Ctrl-D asking or failed, the count of no matches
 match    = { fg = "yellow", bold = true }
-dim      = "dark-gray"     # times, run counts, cuts, dividers, border
+dim      = "dark-gray"     # times, run counts, hosts, cuts, dividers, border
 selected = { bg = "238" }  # the selected row, under the match
 ```
 

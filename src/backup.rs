@@ -191,25 +191,36 @@ impl Backups {
             .context("cannot delete")
     }
 
-    /// The entries of one backup or all of them, oldest first like a history file. Entries without
-    /// a timestamp come first, in the order they were first saved.
+    /// The entries of one backup or all of them, oldest first like a history file, with the hosts
+    /// of the backups holding them. Entries without a timestamp come first, in the order they were
+    /// first saved.
     pub fn entries(&self, started_at: Option<i64>) -> Result<Vec<Entry>, String> {
         let entry = |row: &rusqlite::Row| -> rusqlite::Result<Entry> {
             let time: i64 = row.get(0)?;
-            Ok(Entry::new(row.get(1)?, (time != 0).then_some(time)))
+            let hosts: String = row.get(2)?;
+            // Host names have no commas
+            let hosts = hosts.split(',').map(str::to_string).collect();
+
+            Ok(Entry::new(row.get(1)?, (time != 0).then_some(time), hosts))
         };
 
         let entries = match started_at {
             None => self
                 .connection
-                .prepare("SELECT time, command FROM entries ORDER BY time, id")
+                .prepare(
+                    "SELECT time, command, group_concat(DISTINCT host) FROM entries
+                     JOIN entry_backups ON entry_id = entries.id
+                     JOIN backups USING (started_at)
+                     GROUP BY entries.id ORDER BY time, entries.id",
+                )
                 .and_then(|mut statement| statement.query_map([], entry)?.collect()),
             Some(started_at) => self
                 .connection
                 .prepare(
-                    "SELECT time, command FROM entry_backups
+                    "SELECT time, command, host FROM entry_backups
                      JOIN entries ON entries.id = entry_id
-                     WHERE started_at = ?1 ORDER BY time, id",
+                     JOIN backups USING (started_at)
+                     WHERE started_at = ?1 ORDER BY time, entries.id",
                 )
                 .and_then(|mut statement| statement.query_map([started_at], entry)?.collect()),
         };
@@ -313,11 +324,14 @@ pub fn path() -> Result<PathBuf, String> {
         .ok_or_else(|| "XDG_DATA_HOME and HOME are not set".to_string())
 }
 
-/// The host name up to the first dot
-pub fn host() -> String {
+/// This host's name, checked and cut like a name given with --host
+pub fn host() -> Result<String, String> {
     let uname = rustix::system::uname();
+    let name = uname.nodename().to_string_lossy();
 
-    short_host(&uname.nodename().to_string_lossy()).to_string()
+    parse_host(&name).map(str::to_string).ok_or_else(|| {
+        format!("this host's name {name:?} is not a valid host name, give one with --host NAME")
+    })
 }
 
 /// A host name up to the first dot, None unless it is letters, digits, `-`, `_` and dots, not
@@ -328,11 +342,9 @@ pub fn parse_host(name: &str) -> Option<&str> {
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'));
 
-    Some(short_host(name)).filter(|host| valid && !host.is_empty())
-}
+    let host = name.split('.').next().unwrap_or_default();
 
-fn short_host(name: &str) -> &str {
-    name.split('.').next().unwrap_or_default()
+    (valid && !host.is_empty()).then_some(host)
 }
 
 /// When the backup started, in local time: `20261030-142501`
@@ -394,6 +406,41 @@ mod tests {
 
     fn save(backups: &mut Backups, content: &str, started_at: i64) -> Saved {
         backups.save(&entries(content), "mac", started_at).unwrap()
+    }
+
+    /// Each entry's command and its hosts, sorted
+    fn hosts(entries: &[Entry]) -> Vec<(&str, Vec<&str>)> {
+        entries
+            .iter()
+            .map(|entry| {
+                let mut hosts: Vec<&str> = entry.hosts.iter().map(String::as_str).collect();
+                hosts.sort_unstable();
+                (entry.original.as_str(), hosts)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn reads_the_hosts_of_the_backups_holding_each_entry() {
+        let mut backups = backups();
+        backups.save(&entries("ls\npwd\n"), "mac", START).unwrap();
+        backups
+            .save(&entries("ls\ncd\n"), "air", START + 1)
+            .unwrap();
+        backups.save(&entries("ls\n"), "mac", START + 2).unwrap();
+
+        assert_eq!(
+            hosts(&backups.entries(None).unwrap()),
+            [
+                ("ls", vec!["air", "mac"]),
+                ("pwd", vec!["mac"]),
+                ("cd", vec!["air"])
+            ]
+        );
+        assert_eq!(
+            hosts(&backups.entries(Some(START + 1)).unwrap()),
+            [("ls", vec!["air"]), ("cd", vec!["air"])]
+        );
     }
 
     #[test]

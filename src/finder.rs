@@ -1,10 +1,11 @@
 //! The distinct commands, the query and its matches
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::mem;
 use std::ops::Range;
 
 use chrono::{DateTime, Local};
+use unicode_width::UnicodeWidthStr;
 
 use crate::config::SearchMode;
 use crate::history::Entry;
@@ -21,6 +22,8 @@ pub struct Command {
     pub original: String,
     /// Local time of the most recent entry with a timestamp
     pub time: Option<String>,
+    /// The hosts of its entries' backups, sorted and apart by commas, empty in history
+    pub hosts: String,
     pub entry_indices: Vec<usize>,
 }
 
@@ -36,6 +39,8 @@ pub struct Finder {
     commands: Vec<Command>,
     /// Whether to show a time column
     has_times: bool,
+    /// The widest hosts of a command, 0 without a hosts column
+    hosts_width: usize,
     mode: SearchMode,
     query: String,
     /// Byte offset into the query, on a character boundary
@@ -50,6 +55,11 @@ impl Finder {
         let commands = commands(entries);
         let mut finder = Self {
             has_times: commands.iter().any(|command| command.time.is_some()),
+            hosts_width: commands
+                .iter()
+                .map(|command| command.hosts.width())
+                .max()
+                .unwrap_or(0),
             commands,
             mode,
             cursor: query.len(),
@@ -75,6 +85,10 @@ impl Finder {
 
     pub fn has_times(&self) -> bool {
         self.has_times
+    }
+
+    pub fn hosts_width(&self) -> usize {
+        self.hosts_width
     }
 
     pub fn query(&self) -> &str {
@@ -244,24 +258,31 @@ impl Finder {
 /// after a completion.
 fn commands(entries: &[Entry]) -> Vec<Command> {
     let mut commands: Vec<Command> = Vec::new();
+    let mut hosts: Vec<BTreeSet<&str>> = Vec::new();
     let mut positions: HashMap<&str, usize> = HashMap::new();
 
     for (index, entry) in entries.iter().enumerate().rev() {
         let text = entry.text.trim_end();
-
-        if let Some(&position) = positions.get(text) {
-            let command = &mut commands[position];
-            command.entry_indices.push(index);
-            command.time = command.time.take().or_else(|| local_time(entry.time?));
-        } else {
-            positions.insert(text, commands.len());
+        let position = *positions.entry(text).or_insert_with(|| {
             commands.push(Command {
                 text: text.to_string(),
                 original: entry.original.clone(),
-                time: entry.time.and_then(local_time),
-                entry_indices: vec![index],
+                time: None,
+                hosts: String::new(),
+                entry_indices: Vec::new(),
             });
-        }
+            hosts.push(BTreeSet::new());
+            commands.len() - 1
+        });
+        let command = &mut commands[position];
+
+        command.entry_indices.push(index);
+        command.time = command.time.take().or_else(|| local_time(entry.time?));
+        hosts[position].extend(entry.hosts.iter().map(String::as_str));
+    }
+
+    for (command, hosts) in commands.iter_mut().zip(hosts) {
+        command.hosts = hosts.into_iter().collect::<Vec<_>>().join(",");
     }
 
     commands
@@ -481,6 +502,41 @@ mod tests {
         finder.reload(&history::parse(HISTORY));
 
         assert_eq!(finder.cursor, 1);
+    }
+
+    #[test]
+    fn joins_the_hosts_of_every_entry_of_a_command() {
+        let host_entry = |command: &str, hosts: &[&str]| {
+            let hosts = hosts.iter().map(|host| (*host).to_string()).collect();
+            Entry::new(command.to_string(), None, hosts)
+        };
+        let entries = [
+            host_entry("ls", &["mac"]),
+            host_entry("pwd", &["air"]),
+            host_entry("ls ", &["studio", "air"]),
+        ];
+        let finder = Finder::new(&entries, String::new(), SearchMode::Keyword);
+        let hosts: Vec<(&str, &str)> = finder
+            .commands()
+            .iter()
+            .map(|command| (command.text.as_str(), command.hosts.as_str()))
+            .collect();
+
+        assert_eq!(hosts, [("ls", "air,mac,studio"), ("pwd", "air")]);
+        assert_eq!(finder.hosts_width(), "air,mac,studio".len());
+    }
+
+    #[test]
+    fn has_no_hosts_in_history() {
+        let finder = finder("");
+
+        assert!(
+            finder
+                .commands()
+                .iter()
+                .all(|command| command.hosts.is_empty())
+        );
+        assert_eq!(finder.hosts_width(), 0);
     }
 
     #[test]

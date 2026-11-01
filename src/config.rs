@@ -27,7 +27,7 @@ count    = "dark-gray"     # matches/commands
 deleted  = "green"         # the status after Ctrl-D
 error    = "red"           # Ctrl-D asking or failed, the count of no matches
 match    = { fg = "yellow", bold = true }
-dim      = "dark-gray"     # times, run counts, cuts, dividers, border
+dim      = "dark-gray"     # times, run counts, hosts, cuts, dividers, border
 selected = { bg = "238" }  # the selected row, under the match
 "#;
 
@@ -105,7 +105,7 @@ pub struct Theme {
     pub error: Style,
     #[serde(rename = "match", deserialize_with = "style")]
     pub matched: Style,
-    /// Times, run counts and ellipses off the selected row, the dividers and the border
+    /// Times, run counts, hosts and ellipses off the selected row, the dividers and the border
     #[serde(deserialize_with = "style")]
     pub dim: Style,
     /// The selected row, under the match

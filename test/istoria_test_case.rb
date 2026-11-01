@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'socket'
 require_relative 'test_helper'
 require_relative 'terminal_session'
 
@@ -8,6 +9,7 @@ class IstoriaTestCase < Minitest::Test
   ISTORIA_DIR = File.join(CRATE, 'target', 'debug')
   ISTORIA = File.join(ISTORIA_DIR, 'istoria')
   ISTORIARC = File.join(ROOT, 'home', '.istoriarc')
+  HOST = Socket.gethostname.split('.').first
 
   HISTORY = [
     'cd src/sndbx/',
@@ -138,6 +140,13 @@ class IstoriaTestCase < Minitest::Test
 
   def run_istoria(*, env: {})
     Open3.capture3(istoria_env.merge(env), ISTORIA, *)
+  end
+
+  # A row of the pane searching backups, the command from the column and the hosts at the right edge,
+  # cut past 20 columns
+  def backup_row(command, hosts = HOST, column: 2)
+    hosts = "#{hosts[0, 19]}…" if hosts.size > 20
+    "#{command.ljust(@session.columns - column - hosts.size)}#{hosts}"
   end
 
   # Backs up the history, returns the label and the counts. A backup waits for the next second, as

@@ -64,7 +64,7 @@ class IstoriarcTest < IstoriaTestCase
     @session.press(:alt_up)
     wait_for_istoria_in_bash('echo', prompt: '$ backup›')
 
-    assert_equal ['$ backup› echo', 'echo backed up'], pane
+    assert_equal ['$ backup› echo', backup_row('echo backed up', column: '$ backup› '.size)], pane
 
     @session.press(:enter)
 
@@ -203,7 +203,7 @@ class IstoriarcTest < IstoriaTestCase
     @session.press(:alt_down)
     wait_for_istoria_in_bash('echo', prompt: '$ backup›')
 
-    assert_equal ['$ backup› echo', 'echo backed up'], pane
+    assert_equal ['$ backup› echo', backup_row('echo backed up', column: '$ backup› '.size)], pane
   end
 
   def test_escape_keeps_the_typed_text

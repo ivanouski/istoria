@@ -100,7 +100,7 @@ fn back_up(host: Option<String>) -> Result<(), String> {
     let history = load_history()?;
     let saved = Backups::open(&backup::path()?)?.save(
         history.entries(),
-        &host.unwrap_or_else(backup::host),
+        &host.map_or_else(backup::host, Ok)?,
         Utc::now().timestamp(),
     )?;
 
