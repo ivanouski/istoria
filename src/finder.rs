@@ -413,6 +413,10 @@ fn typo_lens(haystack: &str, word: &[char]) -> Vec<usize> {
         .split(char::is_whitespace)
         .next()
         .unwrap_or_default();
+    if !may_be_one_typo(first_word, word) {
+        return Vec::new();
+    }
+
     let chars: Vec<(usize, char)> = first_word.char_indices().collect();
     let folded: Vec<char> = chars.iter().map(|&(_, c)| fold(c)).collect();
     let n = word.len();
@@ -430,6 +434,18 @@ fn typo_lens(haystack: &str, word: &[char]) -> Vec<usize> {
         .into_iter()
         .map(|(count, _)| chars.get(count).map_or(first_word.len(), |&(end, _)| end))
         .collect()
+}
+
+/// A quick check before `at_most_one_typo`: with one typo, the first two characters of the words
+/// share one
+fn may_be_one_typo(first_word: &str, word: &[char]) -> bool {
+    let word_start = &word[..2];
+
+    first_word
+        .chars()
+        .take(2)
+        .map(fold)
+        .any(|c| word_start.contains(&c))
 }
 
 /// Whether a and b are the same but for at most one typo: a character missing, extra, changed, or
@@ -874,10 +890,32 @@ git log
     }
 
     #[test]
+    fn checks_quickly_without_missing_typos_in_the_first_character() {
+        let lens = |text, word: &str| typo_lens(text, &word.chars().collect::<Vec<_>>());
+
+        // Changed, swapped, extra, missing
+        for (text, word) in [
+            ("git", "xit"),
+            ("git", "igt"),
+            ("git", "xgit"),
+            ("gait", "ait"),
+        ] {
+            assert!(!lens(text, word).is_empty(), "{text} {word}");
+        }
+
+        assert_eq!(lens("push", "gti"), []);
+        assert_eq!(lens("g", "gti"), []);
+    }
+
+    #[test]
     fn finds_words_with_a_typo_at_the_start_of_words() {
         let words = |haystack, query| find_words(haystack, query, true);
 
         assert_eq!(words("sudo git push", "gti"), Some((vec![5..8], true)));
+        assert_eq!(
+            words("git push", "gti psuh"),
+            Some((vec![0..3, 4..8], true))
+        );
         assert_eq!(
             words("sudo git push", "git psuh"),
             Some((vec![5..8, 9..13], true))
