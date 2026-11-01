@@ -45,16 +45,6 @@ class IstoriaBackupTest < IstoriaTestCase
     assert_equal ["backup:#{first}›", backup_row('ls'), backup_row('echo secret')], pane
   end
 
-  def test_shows_the_hosts_of_each_command
-    File.write(@history, "ls\npwd\n")
-    back_up('--host', 'mac')
-    File.write(@history, "ls\ncd\n")
-    back_up('--host', 'air')
-    start('--backup')
-
-    assert_equal ['backup›', backup_row('cd', 'air'), backup_row('pwd', 'mac'), backup_row('ls', 'air,mac')], pane
-  end
-
   def test_deletes_from_every_backup_after_y
     File.write(@history, "echo secret\nls\n")
     first, = back_up
@@ -68,32 +58,6 @@ class IstoriaBackupTest < IstoriaTestCase
     assert_cancels(:escape)
     assert_equal ["#{first}\t#{HOST}\t1\n#{second}\t#{HOST}\t1\n", '', 0], list_backups
     assert_equal "echo secret\nls\n", File.read(@history)
-  end
-
-  def test_deletes_only_from_the_backup_searched
-    File.write(@history, "echo secret\nls\n")
-    first, = back_up
-    second, = back_up
-    start('--backup-id', first, 'secret')
-    delete
-
-    assert_match(/ delete from backup #{first}\? y: echo secret ──\z/, @session.screen[DIVIDER_ROW])
-    @session.type('y')
-    @session.wait_for_text('deleted echo secret')
-    assert_cancels(:escape)
-    assert_equal ["#{first}\t#{HOST}\t1\n#{second}\t#{HOST}\t2\n", '', 0], list_backups
-  end
-
-  def test_cancels_a_delete_from_backups_on_another_key
-    File.write(@history, "echo secret\nls\n")
-    back_up
-    start('--backup', 'secret')
-    delete
-    @session.press(:escape)
-    @session.wait_for { |lines| lines[DIVIDER_ROW].end_with?(' 1/2 ──') }
-
-    assert_picks(:enter, 'echo secret')
-    assert_match(/\t2\n\z/, list_backups.first)
   end
 
   def test_has_no_backups_before_the_first

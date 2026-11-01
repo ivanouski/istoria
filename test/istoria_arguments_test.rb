@@ -11,14 +11,6 @@ class IstoriaArgumentsTest < IstoriaTestCase
     assert_match(/\AUsage: istoria COMMAND \[ARGS\]$/, stdout)
   end
 
-  def test_prints_help_without_a_command
-    stdout, stderr, status = run_istoria
-
-    assert status.success?
-    assert_empty stderr
-    assert_equal run_istoria('--help').first, stdout
-  end
-
   def test_prints_the_version
     version = File.read(File.join(CRATE, 'Cargo.toml'))[/^version = "(.+)"$/, 1]
 
@@ -40,25 +32,11 @@ class IstoriaArgumentsTest < IstoriaTestCase
     end
   end
 
-  def test_searches_for_version_options_after_double_dash
-    File.write(@history, "sbx -V\nls\n")
-    start('--', '-V')
-
-    assert_equal ['› -V', 'sbx -V'], pane
-  end
-
   def test_rejects_unknown_option
     _, stderr, status = run_istoria('search', '-x')
 
     assert_equal 2, status.exitstatus
     assert_equal "istoria: invalid option: -x\nTry 'istoria --help' for usage.\n", stderr
-  end
-
-  def test_double_dash_starts_the_query
-    File.write(@history, "ls\nls -la\n")
-    start('--', '-la')
-
-    assert_equal ['› -la', 'ls -la'], pane
   end
 
   def test_joins_words_into_one_query

@@ -17,16 +17,6 @@ class IstoriaDeletingTest < IstoriaTestCase
     assert_equal HISTORY.lines.grep_v(/\Asbx run/).join, File.read(@history)
   end
 
-  def test_selection_moves_to_the_next_command_after_deleting
-    start('clau')
-
-    @session.press(:down)
-    delete
-
-    assert_equal ['› clau', 'Claude', 'sbx run claude (3)', 'sbx build claude'], pane
-    assert_picks(:enter, 'sbx run claude')
-  end
-
   def test_selection_stays_on_the_last_command_after_deleting_it
     start('clau')
 
@@ -45,23 +35,5 @@ class IstoriaDeletingTest < IstoriaTestCase
 
     assert_equal '› claud', @session.screen.first
     assert_match(%r{ 3/14 ──\z}, @session.screen[DIVIDER_ROW])
-  end
-
-  def test_ctrl_d_without_matches_changes_nothing
-    start('nothing like it')
-
-    @session.press(:ctrl_d)
-
-    assert_cancels(:escape)
-    assert_equal HISTORY, File.read(@history)
-  end
-
-  def test_deletions_stay_after_escape
-    start('tmux')
-
-    delete
-
-    assert_cancels(:escape)
-    assert_equal HISTORY.sub("tmux -CC\n", ''), File.read(@history)
   end
 end

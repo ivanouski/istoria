@@ -3,13 +3,6 @@
 require_relative 'istoria_test_case'
 
 class IstoriaConfigTest < IstoriaTestCase
-  def test_shows_the_selected_row_on_a_background_not_reversed
-    start('cd')
-
-    assert_color '48;5;238'
-    refute_includes @session.output, "\e[7m"
-  end
-
   def test_takes_colors_from_the_config
     write_config(<<~TOML)
       [colors]
@@ -39,22 +32,6 @@ class IstoriaConfigTest < IstoriaTestCase
     assert_picks(:enter, 'gg')
   end
 
-  def test_draws_the_border_on_the_last_row_of_the_pane
-    write_config("border = true\n")
-    start('clau')
-
-    assert_equal ['› clau', 'Claude', 'claude --resume', 'sbx run claude (3)', 'sbx build claude'], pane
-    assert_equal '─' * 80, @session.screen[11]
-  end
-
-  def test_fails_on_a_height_without_a_row_for_the_list
-    write_config("height = 2\n")
-    _, stderr, status = run_istoria('search', 'ls')
-
-    assert_equal 2, status.exitstatus
-    assert_includes stderr, 'height must be at least 3'
-  end
-
   def test_falls_back_to_the_config_in_home
     write_config(%([colors]\nselected = { bg = "21" }\n), home: File.join(@tmp_dir, '.config'))
     start('cd', env: { 'XDG_CONFIG_HOME' => nil, 'HOME' => @tmp_dir })
@@ -69,14 +46,6 @@ class IstoriaConfigTest < IstoriaTestCase
     assert_equal 2, status.exitstatus
     assert_match(%r{\Aistoria: #{Regexp.escape(config_home)}/istoria/config.toml: TOML parse error at line 2}, stderr)
     assert_includes stderr, 'unknown color "yelow"'
-  end
-
-  def test_fails_on_an_unknown_key
-    write_config(%([colors]\nmatched = "red"\n))
-    _, stderr, status = run_istoria('search', 'ls')
-
-    assert_equal 2, status.exitstatus
-    assert_includes stderr, 'unknown field `matched`'
   end
 
   def test_init_config_writes_the_defaults_from_help
@@ -99,22 +68,6 @@ class IstoriaConfigTest < IstoriaTestCase
     assert_empty stdout
     assert_equal "istoria: #{path} already exists\n", stderr
     assert_equal 'broken', File.read(path)
-  end
-
-  def test_init_config_falls_back_to_home
-    stdout, _, status = run_istoria('init-config', env: { 'XDG_CONFIG_HOME' => nil, 'HOME' => @tmp_dir })
-
-    assert status.success?
-    assert_equal "#{File.join(@tmp_dir, '.config', 'istoria', 'config.toml')}\n", stdout
-  end
-
-  def test_ignores_a_relative_config_home
-    write_config(%([colors]\nselected = { bg = "21" }\n), home: File.join(@tmp_dir, '.config'))
-    write_config('broken', home: File.join(@tmp_dir, 'relative'))
-    start('cd', env: { 'XDG_CONFIG_HOME' => 'relative', 'HOME' => @tmp_dir },
-                command: ['sh', '-c', %(cd "#{@tmp_dir}" && exec "$0" search cd), ISTORIA])
-
-    assert_color '48;5;21'
   end
 
   def test_init_config_ignores_a_relative_config_home

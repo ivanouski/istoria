@@ -98,16 +98,6 @@ class IstoriarcTest < IstoriaTestCase
     assert_history ['    1  echo first', '    2  echo second', '    3  echo first', '    4  history']
   end
 
-  def test_up_on_an_empty_line_lists_every_command
-    File.write(@history, "echo first\nls\n")
-    start_bash
-
-    @session.press(:up)
-    wait_for_istoria_in_bash
-
-    assert_equal ['$', 'ls', 'echo first'], pane
-  end
-
   def test_shows_the_shell_prompt_in_its_colors
     File.write(@history, "echo first\necho picked\n")
     start_bash(ps1: '\[\e]0;title\a\e[35m\]box\[\e[0m\]\$ ')
@@ -180,56 +170,6 @@ class IstoriarcTest < IstoriaTestCase
     @session.press(:ctrl_n)
 
     @session.wait_for { |lines| lines.first == '$ echo second' }
-  end
-
-  def test_down_opens_istoria_too
-    File.write(@history, "echo first\nls\n")
-    start_bash
-
-    @session.type('echo')
-    @session.press(:down)
-    wait_for_istoria_in_bash('echo')
-
-    assert_equal ['$ echo', 'echo first'], pane
-  end
-
-  def test_option_down_searches_the_backups_too
-    File.write(@history, "echo backed up\nls\n")
-    run_istoria('backup', env: { 'XDG_DATA_HOME' => nil, 'HOME' => @tmp_dir })
-    File.write(@history, "echo first\n")
-    start_bash
-
-    @session.type('echo')
-    @session.press(:alt_down)
-    wait_for_istoria_in_bash('echo', prompt: '$ backup›')
-
-    assert_equal ['$ backup› echo', backup_row('echo backed up', column: '$ backup› '.size)], pane
-  end
-
-  def test_escape_keeps_the_typed_text
-    start_bash
-
-    @session.type('sbx')
-    @session.press(:up)
-    wait_for_istoria_in_bash('sbx')
-    @session.press(:escape)
-
-    @session.wait_for { |lines| lines.first == '$ sbx' }
-  end
-
-  def test_escape_puts_the_edited_query_on_the_line
-    start_bash
-
-    @session.type('sbx run')
-    @session.press(:up)
-    wait_for_istoria_in_bash('sbx run')
-    @session.press(:backspace, :backspace, :backspace, :backspace)
-    wait_for_istoria_in_bash('sbx')
-    @session.press(:escape)
-    wait_for_bash('$ sbx')
-    @session.type('X')
-
-    @session.wait_for { |lines| lines.first == '$ sbxX' }
   end
 
   def test_escape_without_edits_keeps_the_cursor

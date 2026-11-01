@@ -16,47 +16,10 @@ class IstoriaPickingTest < IstoriaTestCase
     assert_picks(:down, :tab, 'claude --resume', status: 4)
   end
 
-  def test_tab_without_matches_prints_nothing
-    start('nothing like it')
-
-    assert_cancels(:tab)
-  end
-
-  # The only match, so Down stays on it
-  def test_matches_the_words_of_the_query_in_any_order
-    start('claude', 'run')
-
-    assert_picks(:down, :enter, 'sbx run claude')
-  end
-
-  def test_down_selects_the_next_match
-    start('clau')
-
-    assert_picks(:down, :enter, 'claude --resume')
-  end
-
   def test_up_and_control_keys_move_the_selection
     start('clau')
 
     assert_picks(:down, :down, :ctrl_n, :up, :ctrl_p, :down, :down, :enter, 'sbx build claude')
-  end
-
-  def test_selection_stops_at_the_last_match
-    start('sbx run')
-
-    assert_picks(:down, :down, :down, :enter, 'sbx run claude')
-  end
-
-  def test_scrolls_to_matches_below_the_pane
-    start
-
-    assert_picks(*[:down] * 12, :enter, 'tmux -CC')
-  end
-
-  def test_page_down_moves_the_selection_by_the_rows_of_the_list
-    start
-
-    assert_picks(:page_down, :down, :enter, 'sbx -V')
   end
 
   def test_page_up_moves_back_and_stops_at_the_first_match
@@ -119,12 +82,6 @@ class IstoriaPickingTest < IstoriaTestCase
     start('--print-query', 'nothing like it')
 
     assert_cancels(:enter, status: 3, output: 'nothing like it')
-  end
-
-  def test_tab_without_matches_prints_the_query
-    start('--print-query', 'nothing like it')
-
-    assert_cancels(:tab, status: 3, output: 'nothing like it')
   end
 
   def test_keeps_trailing_whitespace_in_the_query

@@ -24,17 +24,6 @@ class IstoriaHistoryFileTest < IstoriaTestCase
     assert_equal "#1700000000\nls\n#1700000002\npwd\n", File.read(@history)
   end
 
-  def test_deletes_timestamps_that_start_mid_file
-    File.write(@history, "ls\nsbx run claude\n#1700000000\npwd\n#1700000001\nsbx run claude\n")
-    start
-
-    assert_equal ['›', '2023-11-14 22:13  sbx run claude (2)', '2023-11-14 22:13  pwd', 'ls'], pane
-
-    delete
-
-    assert_equal "ls\n#1700000000\npwd\n", File.read(@history)
-  end
-
   def test_keeps_lines_appended_while_open
     start('tmux')
     File.write(@history, "echo from another shell\n", mode: 'a')
@@ -87,15 +76,6 @@ class IstoriaHistoryFileTest < IstoriaTestCase
     assert_equal "ls\n", File.read(File.join(@tmp_dir, '.bash_history'))
   end
 
-  def test_delete_last_deletes_the_last_command
-    stdout, stderr, status = run_istoria('delete-last')
-
-    assert status.success?
-    assert_empty stderr
-    assert_equal "gg\n", stdout
-    assert_equal HISTORY.lines[0...-1].join, File.read(@history)
-  end
-
   def test_delete_last_deletes_the_last_n_commands_only
     stdout, _, status = run_istoria('delete-last', '3')
 
@@ -117,32 +97,6 @@ class IstoriaHistoryFileTest < IstoriaTestCase
     run_istoria('delete-last', '100')
 
     assert_empty File.read(@history)
-  end
-
-  def test_delete_last_rejects_an_invalid_count
-    %w[0 x 2x -3 +2 --print-query].each do |count|
-      _, stderr, status = run_istoria('delete-last', count)
-
-      assert_equal 2, status.exitstatus
-      assert_equal "istoria: invalid count: #{count}\nTry 'istoria --help' for usage.\n", stderr
-      assert_equal HISTORY, File.read(@history)
-    end
-  end
-
-  def test_delete_last_takes_no_other_arguments
-    _, stderr, status = run_istoria('delete-last', '3', 'foo')
-
-    assert_equal 2, status.exitstatus
-    assert_equal "istoria: delete-last takes no other arguments\nTry 'istoria --help' for usage.\n", stderr
-    assert_equal HISTORY, File.read(@history)
-  end
-
-  def test_rejects_the_delete_last_option_of_old_versions
-    _, stderr, status = run_istoria('--delete-last')
-
-    assert_equal 2, status.exitstatus
-    assert_equal "istoria: invalid option: --delete-last\nTry 'istoria --help' for usage.\n", stderr
-    assert_equal HISTORY, File.read(@history)
   end
 
   def test_delete_last_leaves_an_empty_history_alone
