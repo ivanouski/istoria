@@ -114,8 +114,8 @@ $ HISTFILE=~/air_history istoria backup --host air
 
 `istoria search --backup` searches every backup, `--backup-id LABEL` one of them, with `backup›` or
 `backup:LABEL›` after the prompt. Each command shows the hosts it was backed up from at the right
-edge, unless the pane is too narrow. Alt-Up and Alt-Down open `--backup`, see [Usage](#usage);
-Terminal.app needs "Use Option as Meta key" for them. Commands the shell hasn't saved yet aren't
+edge, unless the pane is too narrow. Alt-Up and Alt-Down open `--backup`, see [Usage](#usage).
+Commands the shell hasn't saved yet aren't
 backed up, see [Bash history](#bash-history).
 
 Ctrl-D in backups asks first, and `y` deletes the command from every backup, or only from `LABEL`

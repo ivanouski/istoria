@@ -13,8 +13,7 @@ class IstoriarcTest < IstoriaTestCase
 
     expected = [
       ['\eOA', macro], ['\eOB', macro], ['\e[1;3A', backups], ['\e[1;3B', backups], ['\e[9100~', '__istoria_search'],
-      ['\e[9102~', '__istoria_search --backup'], ['\e[A', macro], ['\e[B', macro], ['\e\e[A', backups],
-      ['\e\e[B', backups],
+      ['\e[9102~', '__istoria_search --backup'], ['\e[A', macro], ['\e[B', macro],
     ]
 
     assert_equal expected, bindings.sort

@@ -42,7 +42,7 @@ __istoria_search() {
 }
 
 # Each key runs a macro of two fake keys, no terminal sends them: one opens istoria, the other runs
-# the pick. Alt-arrows send \e[1;3A, or \e\e[A with Option as Meta.
+# the pick. Alt-arrows send \e[1;3A.
 bind -x '"\e[9100~": __istoria_search'
 bind -x '"\e[9102~": __istoria_search --backup'
 bind '"\e[A": "\e[9100~\e[9101~"'
@@ -51,5 +51,3 @@ bind '"\e[B": "\e[9100~\e[9101~"'
 bind '"\eOB": "\e[9100~\e[9101~"'
 bind '"\e[1;3A": "\e[9102~\e[9101~"'
 bind '"\e[1;3B": "\e[9102~\e[9101~"'
-bind '"\e\e[A": "\e[9102~\e[9101~"'
-bind '"\e\e[B": "\e[9102~\e[9101~"'
