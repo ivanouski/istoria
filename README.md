@@ -6,11 +6,23 @@ the history.
 
 ## Install
 
+Download the binary for your platform from the
+[latest release](https://github.com/ivanouski/istoria/releases/latest) into `~/.local/bin`, or
+another directory in `PATH`:
+
+```bash
+asset=istoria-macos   # or istoria-linux-x86_64, istoria-linux-arm64
+curl -fL --create-dirs -o ~/.local/bin/istoria "https://github.com/ivanouski/istoria/releases/latest/download/$asset" && chmod +x ~/.local/bin/istoria
+```
+
+Or build and install it into `~/.cargo/bin` from a clone:
+
 ```bash
 cargo install --path .
 ```
 
-Copy `home/.istoriarc` to your home and load it from `~/.bashrc`, it needs bash 4.0 or later:
+Copy `home/.istoriarc` to your home and load it from `~/.bashrc`, after the line that puts
+`istoria` in `PATH`, it needs bash 4.0 or later:
 
 ```bash
 [[ -f ~/.istoriarc ]] && . ~/.istoriarc
