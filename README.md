@@ -55,8 +55,10 @@ HISTFILESIZE=10000
 
 ## Usage
 
-Up or Down opens istoria with the typed text as the query, Alt-Up or Alt-Down (Option on a Mac)
-does the same in the [backups](#backups). Ctrl-P and Ctrl-N still step through the shell's history.
+Up or Down opens istoria with the typed text as the query: Up searches as the [config](#config)
+says, Down always by keyword. Alt-Up or Alt-Down (Option on a Mac) opens it in the
+[backups](#backups), searching as the config says. Ctrl-P and Ctrl-N still step through the
+shell's history.
 
 Each word matches anywhere in a command, in any order, ignoring case: `push git` finds
 `git -C api push`. With `search = "prefix"` in the [config](#config) or `--search prefix`, the query

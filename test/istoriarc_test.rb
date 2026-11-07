@@ -9,11 +9,13 @@ class IstoriarcTest < IstoriaTestCase
 
     bindings = stdout.lines(chomp: true).map { |line| line.scan(/"([^"]*)"/).flatten }
     macro = '\e[9100~\e[9101~'
+    keyword = '\e[9103~\e[9101~'
     backups = '\e[9102~\e[9101~'
 
     expected = [
-      ['\eOA', macro], ['\eOB', macro], ['\e[1;3A', backups], ['\e[1;3B', backups], ['\e[9100~', '__istoria_search'],
-      ['\e[9102~', '__istoria_search --backup'], ['\e[A', macro], ['\e[B', macro],
+      ['\eOA', macro], ['\eOB', keyword], ['\e[1;3A', backups], ['\e[1;3B', backups], ['\e[9100~', '__istoria_search'],
+      ['\e[9102~', '__istoria_search --backup'], ['\e[9103~', '__istoria_search --search keyword'], ['\e[A', macro],
+      ['\e[B', keyword],
     ]
 
     assert_equal expected, bindings.sort
@@ -51,6 +53,22 @@ class IstoriarcTest < IstoriaTestCase
     @session.press(:enter)
 
     @session.wait_for { |lines| lines.first(3) == ['$ echo picked', 'picked', '$'] }
+  end
+
+  def test_down_searches_by_keyword_whatever_the_config_says
+    File.write(@history, "echo pushed\nls\n")
+    write_config(%(search = "prefix"\n), home: File.join(@tmp_dir, '.config'))
+    start_bash
+
+    @session.type('pushed')
+    @session.press(:down)
+    wait_for_istoria_in_bash('pushed')
+
+    assert_equal ['$ pushed', 'echo pushed'], pane
+
+    @session.press(:enter)
+
+    @session.wait_for { |lines| lines.first(3) == ['$ echo pushed', 'pushed', '$'] }
   end
 
   def test_option_up_searches_the_backups_for_the_typed_text_and_enter_runs_the_command
