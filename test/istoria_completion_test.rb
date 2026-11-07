@@ -26,7 +26,7 @@ class IstoriaCompletionTest < IstoriaTestCase
   end
 
   def test_dash_dash_offers_every_search_option
-    assert_equal %w[--print-query --prompt --backup --backup-id], complete('search', '--')
+    assert_equal %w[--print-query --prompt --backup --backup-id --search --typos --no-typos], complete('search', '--')
   end
 
   def test_completes_a_partial_search_option
@@ -42,17 +42,33 @@ class IstoriaCompletionTest < IstoriaTestCase
   end
 
   def test_offers_search_options_after_the_query
-    assert_equal %w[--print-query --prompt --backup --backup-id], complete('search', 'git', '--')
+    assert_equal %w[--print-query --prompt --backup --backup-id --search --typos --no-typos],
+                 complete('search', 'git', '--')
   end
 
   def test_search_options_are_not_offered_again
-    assert_equal %w[--prompt --backup --backup-id], complete('search', '--print-query', '--')
-    assert_equal %w[--print-query --backup --backup-id], complete('search', '--prompt', '$ ', '--')
+    assert_equal %w[--prompt --backup --backup-id --search --typos --no-typos],
+                 complete('search', '--print-query', '--')
+    assert_equal %w[--print-query --backup --backup-id --search --typos --no-typos],
+                 complete('search', '--prompt', '$ ', '--')
   end
 
   def test_backup_options_go_apart
-    assert_equal %w[--print-query --prompt], complete('search', '--backup', '--')
-    assert_equal %w[--print-query --prompt], complete('search', '--backup-id', '20261030-142501', '--')
+    assert_equal %w[--print-query --prompt --search --typos --no-typos], complete('search', '--backup', '--')
+    assert_equal %w[--print-query --prompt --search --typos --no-typos],
+                 complete('search', '--backup-id', '20261030-142501', '--')
+  end
+
+  def test_typos_options_go_apart
+    assert_equal %w[--print-query --prompt --backup --backup-id --search], complete('search', '--typos', '--')
+    assert_equal %w[--print-query --prompt --backup --backup-id --search], complete('search', '--no-typos', '--')
+  end
+
+  def test_offers_the_search_modes_after_search
+    assert_equal %w[keyword prefix], complete('search', '--search', '')
+    assert_equal %w[prefix], complete('search', 'git', '--search', 'p')
+    assert_equal %w[--print-query --prompt --backup --backup-id --typos --no-typos],
+                 complete('search', '--search', 'prefix', '--')
   end
 
   def test_prompt_text_is_not_completed
@@ -61,7 +77,8 @@ class IstoriaCompletionTest < IstoriaTestCase
   end
 
   def test_a_prompt_text_like_an_option_does_not_stop_completion
-    assert_equal %w[--print-query --backup --backup-id], complete('search', '--prompt', '--help', '--')
+    assert_equal %w[--print-query --backup --backup-id --search --typos --no-typos],
+                 complete('search', '--prompt', '--help', '--')
   end
 
   def test_nothing_follows_options_that_exit

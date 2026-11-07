@@ -24,9 +24,9 @@ _istoria() {
 
 # The helpers below read current and add to candidates, both local to _istoria
 
-# The options of search not given yet, and backup labels after --backup-id
+# The options of search not given yet, backup labels after --backup-id and modes after --search
 _istoria_search() {
-  local word index print_query="" prompt="" backup=""
+  local word index print_query="" prompt="" backup="" mode="" typos=""
 
   for (( index = 2; index < COMP_CWORD; index++ )); do
     word="${COMP_WORDS[index]}"
@@ -35,11 +35,19 @@ _istoria_search() {
       --|-h|--help|-V|--version) return ;;
       --print-query) print_query=1 ;;
       --backup) backup=1 ;;
-      # Their argument is the next word, whatever it looks like: free text, or a label
-      --prompt|--backup-id)
-        [[ "${word}" == --prompt ]] && prompt=1 || backup=1
+      --typos|--no-typos) typos=1 ;;
+      # Their argument is the next word, whatever it looks like: free text, a label or a mode
+      --prompt|--backup-id|--search)
+        case "${word}" in
+          --prompt) prompt=1 ;;
+          --backup-id) backup=1 ;;
+          --search) mode=1 ;;
+        esac
         if (( ++index == COMP_CWORD )); then
-          [[ "${word}" == --backup-id ]] && _istoria_labels
+          case "${word}" in
+            --backup-id) _istoria_labels ;;
+            --search) candidates=(keyword prefix) ;;
+          esac
           return
         fi
         ;;
@@ -53,6 +61,9 @@ _istoria_search() {
   [[ -z "${prompt}" ]] && candidates+=(--prompt)
   # The two ways to search backups go apart
   [[ -z "${backup}" ]] && candidates+=(--backup --backup-id)
+  [[ -z "${mode}" ]] && candidates+=(--search)
+  # So do typos and no typos
+  [[ -z "${typos}" ]] && candidates+=(--typos --no-typos)
 }
 
 # The backup commands or --host, then a label after delete, and the hosts backed up after --host

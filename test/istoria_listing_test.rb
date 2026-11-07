@@ -19,6 +19,19 @@ class IstoriaListingTest < IstoriaTestCase
     assert_equal ['› clau', 'Claude', 'claude --resume'], pane
   end
 
+  def test_search_option_matches_the_start_of_commands
+    start('--search', 'prefix', 'clau')
+
+    assert_equal ['› clau', 'Claude', 'claude --resume'], pane
+  end
+
+  def test_search_option_overrides_the_config
+    write_config(%(search = "prefix"\n))
+    start('--search', 'keyword', 'clau')
+
+    assert_equal ['› clau', 'Claude', 'claude --resume', 'sbx run claude (3)', 'sbx build claude'], pane
+  end
+
   def test_lists_matches_with_a_typo_after_the_others
     File.write(@history, "git push\ngti status\ngit log\n")
     start('gti')
@@ -31,6 +44,20 @@ class IstoriaListingTest < IstoriaTestCase
     start('gti')
 
     assert_equal ['› gti', 'no matches'], pane
+  end
+
+  def test_no_typos_option_turns_them_off
+    start('--no-typos', 'gti')
+
+    assert_equal ['› gti', 'no matches'], pane
+  end
+
+  def test_typos_option_overrides_the_config
+    File.write(@history, "git push\ngti status\ngit log\n")
+    write_config("typos = false\n")
+    start('--typos', 'gti')
+
+    assert_equal ['› gti', 'gti status', 'git log', 'git push'], pane
   end
 
   def test_typing_narrows_the_list

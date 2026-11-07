@@ -75,6 +75,13 @@ pub enum SearchMode {
     Prefix,
 }
 
+impl SearchMode {
+    /// The names the config takes, for --search
+    pub fn parse(name: &str) -> Option<Self> {
+        Self::deserialize(de::value::StrDeserializer::<de::value::Error>::new(name)).ok()
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -362,6 +369,14 @@ mod tests {
     fn rejects_other_search_modes() {
         assert!(error("search = \"fuzzy\"\n").contains("unknown variant `fuzzy`"));
         assert!(error("search = \"Prefix\"\n").contains("expected `keyword` or `prefix`"));
+    }
+
+    #[test]
+    fn parses_the_search_modes_the_config_takes() {
+        assert_eq!(SearchMode::parse("keyword"), Some(SearchMode::Keyword));
+        assert_eq!(SearchMode::parse("prefix"), Some(SearchMode::Prefix));
+        assert_eq!(SearchMode::parse("Prefix"), None);
+        assert_eq!(SearchMode::parse(""), None);
     }
 
     #[test]

@@ -2,6 +2,7 @@
 
 use std::ffi::OsString;
 
+use crate::config::SearchMode;
 use crate::{backup, config};
 
 const USAGE: &str = "\
@@ -21,14 +22,20 @@ Options:
   -V, --version  print the version
 
 search reads $HISTFILE. Each word of the query matches anywhere in a command, in
-any order, ignoring case. With search = \"prefix\" in the config, the query
-matches the start of a command instead.
+any order, ignoring case. With search = \"prefix\" in the config or
+--search prefix, the query matches the start of a command instead.
 
 Search options:
   --print-query      on Esc, print the query and exit with 3
   --prompt TEXT      show TEXT, the shell prompt as bash prints it, instead of ›
   --backup           search every backup instead of $HISTFILE
   --backup-id LABEL  search the backup LABEL instead, like 20261030-142501
+  --search MODE      keyword or prefix, overrides search in the config
+  --typos            match words with one typo, overrides typos in the config
+  --no-typos         match words without typos, overrides typos in the config
+
+Each option can be given once, and --backup with --backup-id or --typos with
+--no-typos is an error.
 
 Keys:
   Up, Down, Ctrl-P, Ctrl-N  move the selection
@@ -65,11 +72,22 @@ Errors exit with 2, signals with 128 + the signal.
 const DELETE_LAST_ALONE: &str = "delete-last takes no other arguments";
 const PROMPT_TEXT: &str = "--prompt takes the prompt text";
 const BACKUP_LABEL: &str = "--backup-id takes a backup label";
-const ONE_BACKUP_LABEL: &str = "--backup-id takes one backup label";
-const BACKUP_AND_LABEL: &str = "--backup and --backup-id can't be used together";
+const SEARCH_MODE: &str = "--search takes a search mode";
 const DELETE_BACKUP_LABEL: &str = "backup delete takes a backup label";
 const HOST_NAME: &str = "--host takes a host name";
-const ONE_HOST_NAME: &str = "--host takes one host name";
+
+/// The options of search, each taken once
+const SEARCH_OPTIONS: [&str; 7] = [
+    "--print-query",
+    "--prompt",
+    "--backup",
+    "--backup-id",
+    "--search",
+    "--typos",
+    "--no-typos",
+];
+/// The search options that can't be used together
+const EXCLUSIVE: [(&str, &str); 2] = [("--backup", "--backup-id"), ("--typos", "--no-typos")];
 
 #[derive(Debug, PartialEq)]
 pub enum Args {
@@ -91,6 +109,10 @@ pub struct Search {
     pub print_query: bool,
     pub prompt: Option<String>,
     pub searched: Searched,
+    /// Over the config's search mode
+    pub mode: Option<SearchMode>,
+    /// Over the config's typos
+    pub typos: Option<bool>,
 }
 
 /// What search reads the commands from
@@ -128,8 +150,7 @@ fn parse_search(args: &[OsString]) -> Result<Args, String> {
     let mut words = Vec::new();
     let mut options = true;
     let mut search = Search::default();
-    let mut backups = false;
-    let mut label = None;
+    let mut given = Vec::new();
     let mut args = args.iter();
 
     while let Some(arg) = args.next() {
@@ -137,6 +158,10 @@ fn parse_search(args: &[OsString]) -> Result<Args, String> {
         let Some(text) = arg.to_str() else {
             return Err(format!("not valid UTF-8: {}", arg.to_string_lossy()));
         };
+
+        if options && SEARCH_OPTIONS.contains(&text) {
+            give(&mut given, text)?;
+        }
 
         match text {
             "--" if options => options = false,
@@ -149,17 +174,19 @@ fn parse_search(args: &[OsString]) -> Result<Args, String> {
                 Some(text) => search.prompt = Some(text.to_string_lossy().into_owned()),
                 None => return Err(usage_error(PROMPT_TEXT)),
             },
-            "--backup" if options => backups = true,
-            "--backup-id" if options => {
-                if label.is_some() {
-                    return Err(usage_error(ONE_BACKUP_LABEL));
+            "--backup" if options => search.searched = Searched::Backups,
+            "--backup-id" if options => match args.next() {
+                Some(text) => {
+                    search.searched = Searched::Backup(parse_label(&text.to_string_lossy())?);
                 }
-
-                match args.next() {
-                    Some(text) => label = Some(parse_label(&text.to_string_lossy())?),
-                    None => return Err(usage_error(BACKUP_LABEL)),
-                }
-            }
+                None => return Err(usage_error(BACKUP_LABEL)),
+            },
+            "--search" if options => match args.next() {
+                Some(text) => search.mode = Some(parse_mode(&text.to_string_lossy())?),
+                None => return Err(usage_error(SEARCH_MODE)),
+            },
+            "--typos" if options => search.typos = Some(true),
+            "--no-typos" if options => search.typos = Some(false),
             option if options && option.starts_with('-') && option.len() > 1 => {
                 return Err(usage_error(&format!("invalid option: {option}")));
             }
@@ -168,14 +195,38 @@ fn parse_search(args: &[OsString]) -> Result<Args, String> {
     }
 
     search.query = words.join(" ");
-    search.searched = match (backups, label) {
-        (false, None) => Searched::History,
-        (true, None) => Searched::Backups,
-        (false, Some(label)) => Searched::Backup(label),
-        (true, Some(_)) => return Err(usage_error(BACKUP_AND_LABEL)),
-    };
 
     Ok(Args::Search(search))
+}
+
+/// Notes the option given, an error when it or the one it can't be used with was given before
+fn give<'a>(given: &mut Vec<&'a str>, option: &'a str) -> Result<(), String> {
+    if given.contains(&option) {
+        return Err(given_twice(option));
+    }
+
+    for (first, second) in EXCLUSIVE {
+        let other = if option == first {
+            second
+        } else if option == second {
+            first
+        } else {
+            continue;
+        };
+
+        if given.contains(&other) {
+            return Err(usage_error(&format!(
+                "{first} and {second} can't be used together"
+            )));
+        }
+    }
+
+    given.push(option);
+    Ok(())
+}
+
+fn given_twice(option: &str) -> String {
+    usage_error(&format!("{option} can only be given once"))
 }
 
 /// The arguments after `delete-last`, which takes nothing but a count
@@ -215,7 +266,7 @@ fn parse_backup_options(args: &[OsString]) -> Result<Args, String> {
         let arg = arg.to_string_lossy();
 
         match arg.as_ref() {
-            "--host" if host.is_some() => return Err(usage_error(ONE_HOST_NAME)),
+            "--host" if host.is_some() => return Err(given_twice("--host")),
             "--host" => match args.next() {
                 Some(name) => host = Some(parse_host(&name.to_string_lossy())?),
                 None => return Err(usage_error(HOST_NAME)),
@@ -273,6 +324,10 @@ fn parse_label(label: &str) -> Result<String, String> {
         Some(_) => Ok(label.to_string()),
         None => Err(usage_error(&format!("invalid backup label: {label}"))),
     }
+}
+
+fn parse_mode(name: &str) -> Result<SearchMode, String> {
+    SearchMode::parse(name).ok_or_else(|| usage_error(&format!("invalid search mode: {name}")))
 }
 
 fn parse_host(name: &str) -> Result<String, String> {
@@ -379,6 +434,8 @@ mod tests {
                 print_query: true,
                 prompt: Some("-$ ".to_string()),
                 searched: Searched::History,
+                mode: None,
+                typos: None,
             }))
         );
     }
@@ -562,7 +619,7 @@ mod tests {
         assert_eq!(error(&["backup", "--host"]), HOST_NAME);
         assert_eq!(
             error(&["backup", "--host", "air", "--host", "mac"]),
-            ONE_HOST_NAME
+            "--host can only be given once"
         );
         assert_eq!(error(&["backup", "--host", ""]), r#"invalid host name: """#);
         assert_eq!(
@@ -604,19 +661,11 @@ mod tests {
     }
 
     #[test]
-    fn rejects_backup_options_that_go_apart() {
+    fn rejects_backup_ids_without_a_label() {
         assert_eq!(error(&["search", "--backup-id"]), BACKUP_LABEL);
         assert_eq!(
             error(&["search", "--backup-id", "x"]),
             "invalid backup label: x"
-        );
-        assert_eq!(
-            error(&["search", "--backup-id", LABEL, "--backup-id", LABEL]),
-            ONE_BACKUP_LABEL
-        );
-        assert_eq!(
-            error(&["search", "--backup", "--backup-id", LABEL]),
-            BACKUP_AND_LABEL
         );
     }
 
@@ -629,6 +678,113 @@ mod tests {
                 searched: Searched::Backups,
                 ..Search::default()
             }))
+        );
+    }
+
+    fn search_with(mode: Option<SearchMode>, typos: Option<bool>, query: &str) -> Args {
+        Args::Search(Search {
+            query: query.to_string(),
+            mode,
+            typos,
+            ..Search::default()
+        })
+    }
+
+    #[test]
+    fn takes_the_search_mode_over_the_config() {
+        assert_eq!(
+            parse(&["search", "--search", "prefix", "git"]),
+            Ok(search_with(Some(SearchMode::Prefix), None, "git"))
+        );
+        assert_eq!(
+            parse(&["search", "git", "--search", "keyword", "log"]),
+            Ok(search_with(Some(SearchMode::Keyword), None, "git log"))
+        );
+    }
+
+    #[test]
+    fn takes_typos_over_the_config() {
+        assert_eq!(
+            parse(&["search", "--typos", "gti"]),
+            Ok(search_with(None, Some(true), "gti"))
+        );
+        assert_eq!(
+            parse(&["search", "gti", "--no-typos"]),
+            Ok(search_with(None, Some(false), "gti"))
+        );
+        assert_eq!(
+            parse(&["search", "--search", "prefix", "--no-typos"]),
+            Ok(search_with(Some(SearchMode::Prefix), Some(false), ""))
+        );
+    }
+
+    #[test]
+    fn takes_search_options_after_a_double_dash_for_the_query() {
+        assert_eq!(
+            parse(&["search", "--", "--search", "prefix", "--no-typos"]),
+            Ok(search("--search prefix --no-typos", false))
+        );
+    }
+
+    #[test]
+    fn rejects_search_modes_other_than_one_the_config_takes() {
+        assert_eq!(error(&["search", "--search"]), SEARCH_MODE);
+        assert_eq!(
+            error(&["search", "--search", "fuzzy"]),
+            "invalid search mode: fuzzy"
+        );
+        assert_eq!(
+            error(&["search", "--search", "--typos"]),
+            "invalid search mode: --typos"
+        );
+    }
+
+    #[test]
+    fn rejects_search_options_given_twice() {
+        for (option, value) in [
+            ("--print-query", None),
+            ("--prompt", Some("$ ")),
+            ("--backup", None),
+            ("--backup-id", Some(LABEL)),
+            ("--search", Some("prefix")),
+            ("--typos", None),
+            ("--no-typos", None),
+        ] {
+            let once: Vec<&str> = [option].into_iter().chain(value).collect();
+            let args = [&["search"][..], &once, &["git"], &once].concat();
+
+            assert_eq!(error(&args), format!("{option} can only be given once"));
+        }
+    }
+
+    #[test]
+    fn takes_option_names_as_values_without_counting_them() {
+        assert_eq!(
+            parse(&["search", "--prompt", "--prompt"]),
+            Ok(Args::Search(Search {
+                prompt: Some("--prompt".to_string()),
+                ..Search::default()
+            }))
+        );
+    }
+
+    #[test]
+    fn rejects_search_options_that_go_apart() {
+        assert_eq!(
+            error(&["search", "--backup", "--backup-id", LABEL]),
+            "--backup and --backup-id can't be used together"
+        );
+        assert_eq!(
+            error(&["search", "--backup-id", LABEL, "git", "--backup"]),
+            "--backup and --backup-id can't be used together"
+        );
+        assert_eq!(
+            error(&["search", "--typos", "--no-typos"]),
+            "--typos and --no-typos can't be used together"
+        );
+        assert_eq!(
+            error(&["search", "--no-typos", "--typos"]),
+            "--typos and --no-typos can't be used together"
         );
     }
 }

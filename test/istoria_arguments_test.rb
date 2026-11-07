@@ -39,6 +39,20 @@ class IstoriaArgumentsTest < IstoriaTestCase
     assert_equal "istoria: invalid option: -x\nTry 'istoria --help' for usage.\n", stderr
   end
 
+  def test_rejects_an_unknown_search_mode
+    _, stderr, status = run_istoria('search', '--search', 'fuzzy')
+
+    assert_equal 2, status.exitstatus
+    assert_equal "istoria: invalid search mode: fuzzy\nTry 'istoria --help' for usage.\n", stderr
+  end
+
+  def test_rejects_an_option_given_twice
+    _, stderr, status = run_istoria('search', '--prompt', 'a', '--prompt', 'b')
+
+    assert_equal 2, status.exitstatus
+    assert_equal "istoria: --prompt can only be given once\nTry 'istoria --help' for usage.\n", stderr
+  end
+
   def test_joins_words_into_one_query
     start('sbx', 'run')
 

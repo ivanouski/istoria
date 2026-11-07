@@ -59,16 +59,16 @@ Up or Down opens istoria with the typed text as the query, Alt-Up or Alt-Down (O
 does the same in the [backups](#backups). Ctrl-P and Ctrl-N still step through the shell's history.
 
 Each word matches anywhere in a command, in any order, ignoring case: `push git` finds
-`git -C api push`. With `search = "prefix"` in the [config](#config), the query matches the start
-of a command instead: `git` finds `git push` but not `sudo git push`. A space after the query
-ends a word there, so `ls ` finds `ls` and `ls -la` but not `lsof`.
+`git -C api push`. With `search = "prefix"` in the [config](#config) or `--search prefix`, the query
+matches the start of a command instead: `git` finds `git push` but not `sudo git push`. A space
+after the query ends a word there, so `ls ` finds `ls` and `ls -la` but not `lsof`.
 
 A word of 3 or more characters also matches the start of a word in a command with one typo: a
 character missing, extra, changed, or swapped with the next one. `gti` finds `git push` and `dokcer
 comp` finds `docker compose up`, listed after the commands that match without typos. A match that is
 short a character or has the last one changed has to be a whole word, so `giit` and `gix` find `git`
-but not `gist`. With `search = "prefix"`, only the first word gets a typo. `typos = false` in the
-config turns them off.
+but not `gist`. With prefix search, only the first word gets a typo. `typos = false` in the
+config or `--no-typos` turns them off, and `--typos` turns them on despite the config.
 
 | Key                           | Action                                   |
 | ----------------------------- | ---------------------------------------- |
