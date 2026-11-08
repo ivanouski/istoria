@@ -6,7 +6,20 @@ the history.
 
 ## Install
 
-Download the binary for your platform from the
+With [Homebrew](https://brew.sh), on macOS or Linux, which installs the completion too:
+
+```bash
+brew install ivanouski/tap/istoria
+```
+
+Then load its `.istoriarc` from `~/.bashrc`, after the `brew shellenv` line, it needs bash 4.0 or
+later (macOS ships 3.2, see `brew install bash`). It's upgraded along with istoria:
+
+```bash
+[[ -f $HOMEBREW_PREFIX/share/istoria/istoriarc ]] && . "$HOMEBREW_PREFIX/share/istoria/istoriarc"
+```
+
+Or download the binary for your platform from the
 [latest release](https://github.com/ivanouski/istoria/releases/latest) into `~/.local/bin`, or
 another directory in `PATH`:
 

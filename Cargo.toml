@@ -1,6 +1,6 @@
 [package]
 name = "istoria"
-version = "0.40.0"
+version = "0.40.1"
 edition = "2024"
 description = "A bash history finder that forgives typos"
 license = "MIT"
@@ -22,3 +22,6 @@ pedantic = { level = "warn", priority = -1 }
 struct_excessive_bools = "allow"
 # Flags pairs like pane and page that are both the right name
 similar_names = "allow"
+
+[profile.release]
+strip = true
