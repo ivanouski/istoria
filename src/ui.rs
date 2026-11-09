@@ -850,7 +850,7 @@ mod tests {
         let buffer = Render::new(&finder(HISTORY)).run().buffer;
         let cell = |x| &buffer[(x, FIRST_ROW)];
 
-        assert!((0..40).all(|x| cell(x).bg == Color::Indexed(238)));
+        assert!((0..40).all(|x| cell(x).bg == Color::DarkGray));
         assert!((20..22).all(|x| cell(x).fg == Color::Yellow));
         assert!(cell(20).modifier.contains(Modifier::BOLD));
         // Neither the time nor the rest of the command dimmed
@@ -1161,7 +1161,7 @@ mod tests {
             text(&buffer, FIRST_ROW + 1).find("ls").unwrap(),
             prompt.len()
         );
-        assert!((0..120).all(|x| buffer[(x, FIRST_ROW)].bg == Color::Indexed(238)));
+        assert!((0..120).all(|x| buffer[(x, FIRST_ROW)].bg == Color::DarkGray));
     }
 
     #[test]
@@ -1424,7 +1424,7 @@ mod tests {
                 .fg,
             Color::Yellow
         );
-        assert!((0..40).all(|x| buffer[(x, FIRST_ROW)].bg == Color::Indexed(238)));
+        assert!((0..40).all(|x| buffer[(x, FIRST_ROW)].bg == Color::DarkGray));
     }
 
     #[test]
@@ -1501,7 +1501,7 @@ mod tests {
         assert!(text(&buffer, ABOVE_DIVIDER_ROW).ends_with(" 2/2 ──"));
         // The most recent command is selected, next to the divider
         assert!(text(&buffer, 2).trim_end().ends_with("  ls"));
-        assert!((0..40).all(|x| buffer[(x, 2)].bg == Color::Indexed(238)));
+        assert!((0..40).all(|x| buffer[(x, 2)].bg == Color::DarkGray));
         assert!(text(&buffer, 1).trim_end().ends_with("  ls -la"));
         assert_eq!(text(&buffer, 0).trim(), "");
     }

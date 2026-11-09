@@ -23,13 +23,13 @@ search  = "keyword" # words anywhere, or "prefix": the start of commands
 typos   = true      # words of 3+ characters also match with one typo, listed after
 [colors]
 prompt   = { fg = "blue", bold = true }
-backup   = "yellow"        # the prompt searching backups
-count    = "dark-gray"     # matches/commands
-deleted  = "green"         # the status after Ctrl-D
-error    = "red"           # Ctrl-D asking or failed, the count of no matches
+backup   = "yellow"              # the prompt searching backups
+count    = "dark-gray"           # matches/commands
+deleted  = "green"               # the status after Ctrl-D
+error    = "red"                 # Ctrl-D asking or failed, the count of no matches
 match    = { fg = "yellow", bold = true }
-dim      = "dark-gray"     # times, run counts, hosts, cuts, dividers, border
-selected = { bg = "238" }  # the selected row, under the match
+dim      = "dark-gray"           # times, run counts, hosts, cuts, dividers, border
+selected = { bg = "dark-gray" }  # the selected row, under the match
 "#;
 
 const DEFAULT_HEIGHT: u16 = 12;
@@ -133,8 +133,8 @@ impl Default for Theme {
             error: Style::new().fg(Color::Red),
             matched: Style::new().fg(Color::Yellow).bold(),
             dim: Style::new().fg(Color::DarkGray),
-            // 236 is too close to dark backgrounds, dark gray is the dim text
-            selected: Style::new().bg(Color::Indexed(238)),
+            // One of the 16 colors to follow the terminal theme, the dim text is off the selected row
+            selected: Style::new().bg(Color::DarkGray),
         }
     }
 }

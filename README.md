@@ -163,13 +163,13 @@ search  = "keyword" # words anywhere, or "prefix": the start of commands
 typos   = true      # words of 3+ characters also match with one typo, listed after
 [colors]
 prompt   = { fg = "blue", bold = true }
-backup   = "yellow"        # the prompt searching backups
-count    = "dark-gray"     # matches/commands
-deleted  = "green"         # the status after Ctrl-D
-error    = "red"           # Ctrl-D asking or failed, the count of no matches
+backup   = "yellow"              # the prompt searching backups
+count    = "dark-gray"           # matches/commands
+deleted  = "green"               # the status after Ctrl-D
+error    = "red"                 # Ctrl-D asking or failed, the count of no matches
 match    = { fg = "yellow", bold = true }
-dim      = "dark-gray"     # times, run counts, hosts, cuts, dividers, border
-selected = { bg = "238" }  # the selected row, under the match
+dim      = "dark-gray"           # times, run counts, hosts, cuts, dividers, border
+selected = { bg = "dark-gray" }  # the selected row, under the match
 ```
 
 `height` counts the prompt line and the divider, so it is at least 3. With `list = "above"` the

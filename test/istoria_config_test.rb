@@ -13,7 +13,7 @@ class IstoriaConfigTest < IstoriaTestCase
 
     assert_color '38;2;255;136;0'
     assert_color '48;5;21'
-    refute_color '48;5;238'
+    refute_color '48;5;8'
   end
 
   def test_takes_the_pane_height_from_the_config
@@ -102,6 +102,6 @@ class IstoriaConfigTest < IstoriaTestCase
     run_istoria('init-config')
     start('cd')
 
-    assert_color '48;5;238'
+    assert_color '48;5;8'
   end
 end
