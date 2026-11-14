@@ -9,7 +9,7 @@ use ratatui::crossterm::{cursor, execute, queue, terminal};
 use ratatui::layout::Position;
 use ratatui::{Frame, Terminal, TerminalOptions, Viewport};
 
-use crate::tty::{RawMode, StdoutToTty};
+use crate::tty::{BracketedPaste, RawMode, StdoutToTty};
 
 /// Fits a whole frame, so it's written at once
 const FRAME_BUFFER: usize = 1 << 16;
@@ -19,7 +19,8 @@ pub struct Pane {
     terminal: Terminal<CrosstermBackend<BufWriter<File>>>,
     /// The cursor's when opened, on text to go back to unless 0
     column: u16,
-    /// Fields drop in order, so these are restored after the terminal is gone
+    /// Fields drop in order, so these are restored after the terminal is gone, with stdout on it
+    _paste: BracketedPaste,
     _raw_mode: RawMode,
     _stdout: StdoutToTty,
 }
@@ -29,6 +30,7 @@ impl Pane {
     pub fn open(height: u16) -> io::Result<Self> {
         let mut tty = OpenOptions::new().read(true).write(true).open("/dev/tty")?;
         let stdout = StdoutToTty::new(&tty)?;
+        let paste = BracketedPaste::enable(&tty)?;
         let raw_mode = RawMode::enable()?;
 
         // Bash clears the prompt line for bind -x, if text is still there the pane opens below it
@@ -49,6 +51,7 @@ impl Pane {
         Ok(Self {
             terminal,
             column,
+            _paste: paste,
             _raw_mode: raw_mode,
             _stdout: stdout,
         })

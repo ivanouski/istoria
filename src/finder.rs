@@ -117,6 +117,34 @@ impl Finder {
         self.refilter();
     }
 
+    /// Pasted text, on one line: line breaks and tabs become spaces, other control characters go.
+    /// Pasted at the end of the query, whitespace at its end, copied with a line, goes too: a space
+    /// there would end the last word. Before more of the query, it keeps words apart.
+    pub fn insert(&mut self, text: &str) {
+        let mut chars = text.chars().peekable();
+        let mut text = String::with_capacity(text.len());
+
+        while let Some(c) = chars.next() {
+            match c {
+                // One line break
+                '\r' if chars.peek() == Some(&'\n') => {}
+                '\n' | '\r' | '\t' => text.push(' '),
+                c if c.is_control() => {}
+                c => text.push(c),
+            }
+        }
+
+        if self.cursor == self.query.len() {
+            text.truncate(text.trim_end().len());
+        }
+
+        if !text.is_empty() {
+            self.query.insert_str(self.cursor, &text);
+            self.cursor += text.len();
+            self.refilter();
+        }
+    }
+
     pub fn delete_back(&mut self) {
         if let Some(start) = self.previous_boundary() {
             self.delete_back_to(start);
@@ -515,6 +543,49 @@ mod tests {
     #[test]
     fn starts_with_the_cursor_after_the_query() {
         assert_eq!(finder("ls").cursor, 2);
+    }
+
+    #[test]
+    fn inserts_pasted_text_at_the_cursor() {
+        let mut finder = finder("git ");
+
+        finder.left();
+        finder.insert("é log");
+        assert_eq!((finder.query.as_str(), finder.cursor), ("gité log ", 9));
+    }
+
+    #[test]
+    fn pastes_lines_and_tabs_as_spaces_without_other_control_characters() {
+        let mut finder = finder("");
+
+        finder.insert("p\r\nw\nd\r-\tx\x1b\x07y");
+        assert_eq!((finder.query.as_str(), finder.cursor), ("p w d - xy", 10));
+        assert_eq!(texts(&finder), Vec::<&str>::new());
+
+        finder.insert("\x1b");
+        assert_eq!(finder.query, "p w d - xy");
+    }
+
+    #[test]
+    fn drops_whitespace_at_the_end_of_the_paste() {
+        let mut finder = finder("");
+
+        finder.insert("pw \t\r\n\n");
+        assert_eq!((finder.query.as_str(), finder.cursor), ("pw", 2));
+        assert_eq!(texts(&finder), ["pwd"]);
+
+        // Left once control characters are gone
+        finder.insert("d\n\x07");
+        assert_eq!((finder.query.as_str(), finder.cursor), ("pwd", 3));
+    }
+
+    #[test]
+    fn keeps_whitespace_at_the_end_of_a_paste_before_more_of_the_query() {
+        let mut finder = finder("log");
+
+        finder.home();
+        finder.insert("git\n");
+        assert_eq!((finder.query.as_str(), finder.cursor), ("git log", 4));
     }
 
     #[test]

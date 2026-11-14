@@ -8,9 +8,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::Duration;
 
-use ratatui::crossterm::event::{self, Event};
-use ratatui::crossterm::terminal;
+use ratatui::crossterm::event::{self, DisableBracketedPaste, EnableBracketedPaste, Event};
+use ratatui::crossterm::{execute, terminal};
 use rustix::stdio::dup2_stdout;
+use rustix::termios::{self, LocalModes};
 use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM};
 
 pub struct RawMode;
@@ -25,6 +26,37 @@ impl RawMode {
 impl Drop for RawMode {
     fn drop(&mut self) {
         let _ = terminal::disable_raw_mode();
+    }
+}
+
+/// Pastes come whole, so their newlines don't pick a command. A line editor, as around bind -x,
+/// keeps its own setting and expects it after: readline has bracketed paste from bash 4.4, on by
+/// default from 5.1.
+pub struct BracketedPaste {
+    enabled: bool,
+}
+
+impl BracketedPaste {
+    /// Before raw mode, while line input tells a line editor apart, with stdout on the terminal
+    pub fn enable(tty: &impl AsFd) -> io::Result<Self> {
+        // Off under a line editor, which reads keys one by one
+        let enabled = termios::tcgetattr(tty)?
+            .local_modes
+            .contains(LocalModes::ICANON);
+
+        if enabled {
+            execute!(io::stdout(), EnableBracketedPaste)?;
+        }
+
+        Ok(Self { enabled })
+    }
+}
+
+impl Drop for BracketedPaste {
+    fn drop(&mut self) {
+        if self.enabled {
+            let _ = execute!(io::stdout(), DisableBracketedPaste);
+        }
     }
 }
 

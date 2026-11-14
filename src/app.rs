@@ -94,15 +94,19 @@ pub fn pick(
             );
         })?;
 
+        let confirming = matches!(status, Some(Status::Confirm(_)));
+
         match tty::next_event(&signal)? {
             None => break Outcome::Signaled(signal.load(Ordering::Relaxed)),
             Some(Event::Key(key)) if key.kind == KeyEventKind::Press => {
-                let confirming = matches!(status, Some(Status::Confirm(_)));
-
                 match handle_key(key, finder, source, page, list, confirming) {
                     Break(outcome) => break outcome,
                     Continue(next_status) => status = next_status,
                 }
+            }
+            Some(Event::Paste(text)) => {
+                handle_paste(&text, finder, confirming);
+                status = None;
             }
             // Other events, like a resize, only redraw
             Some(_) => {}
@@ -190,6 +194,13 @@ fn handle_key(
     }
 
     Continue(None)
+}
+
+/// Puts pasted text in the query. Like a key other than y, it only cancels a delete being confirmed.
+fn handle_paste(text: &str, finder: &mut Finder, confirming: bool) {
+    if !confirming {
+        finder.insert(text);
+    }
 }
 
 /// Asks before deleting the selected command from backups
@@ -359,6 +370,11 @@ mod tests {
             );
             self.confirming = matches!(flow, Continue(Some(Status::Confirm(_))));
             flow
+        }
+
+        fn paste(&mut self, text: &str) {
+            handle_paste(text, &mut self.finder, self.confirming);
+            self.confirming = false;
         }
 
         /// Presses a key that keeps the finder open without a status
@@ -640,6 +656,36 @@ mod tests {
             session.press(KeyCode::Char('d'), CONTROL),
             Continue(Some(Status::Confirm(_)))
         ));
+    }
+
+    #[test]
+    fn pastes_into_the_query_without_picking_on_its_newlines() {
+        let mut session = Session::open("paste");
+        session.edit(KeyCode::Char('e'), NONE);
+        session.edit(KeyCode::Home, NONE);
+
+        session.paste("p\nw\n");
+
+        assert_eq!(session.finder.query(), "p w e");
+        assert_eq!(session.finder.cursor(), 4);
+        assert!(session.finder.selection().is_none());
+    }
+
+    #[test]
+    fn cancels_a_delete_from_backups_on_a_paste_without_pasting() {
+        let mut session = Session::open_backups("delete-backup-paste", false);
+
+        assert!(matches!(
+            session.press(KeyCode::Char('d'), CONTROL),
+            Continue(Some(Status::Confirm(_)))
+        ));
+        session.paste("y");
+
+        assert_eq!(session.finder.query(), "");
+        assert_eq!(session.backed_up(None), ["ls", "pwd", "echo"]);
+
+        session.paste("y");
+        assert_eq!(session.finder.query(), "y");
     }
 
     #[test]

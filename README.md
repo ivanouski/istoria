@@ -101,6 +101,13 @@ config or `--no-typos` turns them off, and `--typos` turns them on despite the c
 | Esc                           | quit, keeping the query                  |
 | Ctrl-C                        | quit, leaving the prompt line as it was  |
 
+Pasted text goes in the query at the cursor, on one line: line breaks and tabs become spaces, so a
+paste doesn't run a command. Whitespace at the end of a paste is dropped at the end of the query,
+where a space would end the word. Opened with Up or Down, a paste is safe with
+bracketed paste in readline: on by default from bash 5.1, and from 4.4 with
+`set enable-bracketed-paste on` in `~/.inputrc`. Without it, as before bash 4.4, a pasted line break
+works like Enter.
+
 With bash 4.4 or later istoria shows your prompt in place of `›`, unless it takes more than 60% of
 the width. That runs any `$(...)` in `PS1` each time istoria opens, so `ISTORIA_SHELL_PROMPT=false`
 keeps `›`. `ISTORIA_PROMPT`, written like `PS1`, shows in place of either:

@@ -32,6 +32,11 @@ class TerminalSession
     @writer.flush
   end
 
+  # As a terminal pastes with bracketed paste on
+  def paste(text)
+    type("\e[200~#{text}\e[201~")
+  end
+
   def press(*keys)
     keys.each { |key| type(KEYS.fetch(key)) }
   end

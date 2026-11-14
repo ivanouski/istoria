@@ -1,6 +1,6 @@
 [package]
 name = "istoria"
-version = "0.41.0"
+version = "0.42.0"
 edition = "2024"
 description = "A bash history finder that forgives typos"
 license = "MIT"
@@ -10,7 +10,7 @@ publish = false
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 ratatui = { version = "0.30", default-features = false, features = ["crossterm"] }
 rusqlite = { version = "0.41", features = ["bundled"] }
-rustix = { version = "1", default-features = false, features = ["std", "stdio", "system"] }
+rustix = { version = "1", default-features = false, features = ["std", "stdio", "system", "termios"] }
 serde = { version = "1", features = ["derive"] }
 signal-hook = "0.3"
 toml = "1"
