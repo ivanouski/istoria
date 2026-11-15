@@ -1,5 +1,6 @@
 //! The distinct commands, the query and its matches
 
+use std::cmp::Reverse;
 use std::collections::{BTreeSet, HashMap};
 use std::mem;
 use std::ops::Range;
@@ -382,28 +383,42 @@ fn local_time(seconds: i64) -> Option<String> {
     Some(time.format(TIME_FORMAT).to_string())
 }
 
-/// Each query word's first occurrence, touching ranges merged, and whether one needed a typo. None
-/// when a word is missing.
+/// Each query word's first occurrence apart from the other words', touching ranges merged, and
+/// whether one needed a typo. None when a word is missing. Longer words go first, so in `sbx b` the b
+/// isn't the one in sbx.
 fn find_words(haystack: &str, query: &str, typos: bool) -> Option<(Vec<Range<usize>>, bool)> {
+    let mut words: Vec<&str> = query.split_whitespace().collect();
+    words.sort_by_key(|word| Reverse(word.chars().count()));
+
     let mut typo = false;
-    let mut found = query
-        .split_whitespace()
-        .map(|word| match find(haystack, word) {
-            Some(range) => Some(range),
+    let mut found: Vec<Range<usize>> = Vec::with_capacity(words.len());
+
+    for word in words {
+        let apart = |range: &Range<usize>| {
+            found
+                .iter()
+                .all(|taken| range.end <= taken.start || taken.end <= range.start)
+        };
+        let range = match occurrences(haystack, word).find(|range| apart(range)) {
+            Some(range) => range,
             None if typos => {
                 typo = true;
-                find_typo(haystack, word)
+                find_typo(haystack, word, apart)?
             }
-            None => None,
-        })
-        .collect::<Option<Vec<_>>>()?;
+            None => return None,
+        };
+
+        found.push(range);
+    }
+
     found.sort_by_key(|range| range.start);
 
     let mut ranges: Vec<Range<usize>> = Vec::with_capacity(found.len());
 
+    // Apart, so a range starts at the end of the last one at the earliest
     for range in found {
         match ranges.last_mut() {
-            Some(last) if range.start <= last.end => last.end = last.end.max(range.end),
+            Some(last) if range.start == last.end => last.end = range.end,
             _ => ranges.push(range),
         }
     }
@@ -433,14 +448,20 @@ fn find_prefix(haystack: &str, query: &str, typos: bool) -> Option<(Vec<Range<us
     Some((range.into_iter().collect(), typo))
 }
 
-/// The first word of the haystack that starts with the query word but for a typo, see `typo_lens`
-fn find_typo(haystack: &str, word: &str) -> Option<Range<usize>> {
+/// The first word of the haystack that starts with the query word but for a typo, see `typo_lens`,
+/// in the first range that `apart` takes
+fn find_typo(
+    haystack: &str,
+    word: &str,
+    apart: impl Fn(&Range<usize>) -> bool,
+) -> Option<Range<usize>> {
     let word = typo_word(word)?;
 
     word_starts(haystack).find_map(|start| {
-        let len = *typo_lens(&haystack[start..], &word).first()?;
-
-        Some(start..start + len)
+        typo_lens(&haystack[start..], &word)
+            .into_iter()
+            .map(|len| start..start + len)
+            .find(|range| apart(range))
     })
 }
 
@@ -541,14 +562,13 @@ fn at_most_one_typo(a: &[char], b: &[char]) -> bool {
     }
 }
 
-/// Case-insensitive substring search
-fn find(haystack: &str, needle: &str) -> Option<Range<usize>> {
-    let mut starts = haystack
+/// Case-insensitive substring search, every occurrence from the start
+fn occurrences(haystack: &str, needle: &str) -> impl Iterator<Item = Range<usize>> {
+    haystack
         .char_indices()
         .map(|(start, _)| start)
-        .chain([haystack.len()]);
-
-    starts.find_map(|start| Some(start..start + prefix_len(&haystack[start..], needle)?))
+        .chain([haystack.len()])
+        .filter_map(|start| Some(start..start + prefix_len(&haystack[start..], needle)?))
 }
 
 /// Byte length of needle at the start of haystack, ignoring case
@@ -833,12 +853,37 @@ mod tests {
         assert_eq!(find_words("git -C api push", "git pull", false), None);
     }
 
+    /// The first occurrence
+    fn find(haystack: &str, needle: &str) -> Option<Range<usize>> {
+        occurrences(haystack, needle).next()
+    }
+
     #[test]
-    fn merges_words_that_overlap_or_touch() {
-        assert_eq!(find_words("git push", "gi git", false).unwrap().0, [0..3]);
-        assert_eq!(find_words("ls ls", "ls ls", false).unwrap().0, [0..2]);
+    fn merges_words_that_touch() {
         assert_eq!(find_words("abc", "a bc", false).unwrap().0, [0..3]);
-        assert_eq!(find_words("git push", "ls ls", false), None);
+        assert_eq!(find_words("ls ls", "ls ls", false).unwrap().0, [0..2, 3..5]);
+    }
+
+    #[test]
+    fn matches_each_word_apart_from_the_others() {
+        let ranges = |command, query| find_words(command, query, false).map(|found| found.0);
+
+        assert_eq!(ranges("sbx build", "sbx b"), Some(vec![0..3, 4..5]));
+        // The longer word goes first, whatever the order: the b isn't the one in sbx
+        assert_eq!(ranges("sbx build", "b sbx"), Some(vec![0..3, 4..5]));
+        assert_eq!(ranges("sbx run claude", "sbx b"), None);
+        assert_eq!(ranges("git push", "gi git"), None);
+        assert_eq!(ranges("git push", "ls ls"), None);
+        assert_eq!(ranges("ls", "ls ls"), None);
+    }
+
+    #[test]
+    fn matches_typos_apart_from_the_other_words() {
+        assert_eq!(
+            find_words("sbx build", "sbr b", true),
+            Some((vec![0..3, 4..5], true))
+        );
+        assert_eq!(find_words("sbx run claude", "sbr b", true), None);
     }
 
     #[test]

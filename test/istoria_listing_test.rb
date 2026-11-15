@@ -68,6 +68,13 @@ class IstoriaListingTest < IstoriaTestCase
     assert_equal ['› clau', 'Claude', 'claude --resume', 'sbx run claude (3)', 'sbx build claude'], pane
   end
 
+  def test_matches_each_word_apart_from_the_others
+    start('sbx b')
+
+    # The b of sbx is taken
+    assert_equal ['› sbx b', 'sbx build claude'], pane
+  end
+
   def test_lists_matches_with_a_typo_after_the_others
     File.write(@history, "git push\ngti status\ngit log\n")
     start('gti')
