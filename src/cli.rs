@@ -2,7 +2,7 @@
 
 use std::ffi::OsString;
 
-use crate::config::SearchMode;
+use crate::config::{Layout, SearchMode};
 use crate::{backup, config};
 
 const USAGE: &str = "\
@@ -23,7 +23,9 @@ Options:
 
 search reads $HISTFILE. Each word of the query matches anywhere in a command, in
 any order, ignoring case. With search = \"prefix\" in the config or
---search prefix, the query matches the start of a command instead.
+--search prefix, the query matches the start of a command instead. With
+layout = \"weights\" or --layout weights, the commands run the most lately come
+first, with bars of how much, the times at the right edge.
 
 Search options:
   --print-query      on Esc, print the query and exit with 3
@@ -31,6 +33,7 @@ Search options:
   --backup           search every backup instead of $HISTFILE
   --backup-id LABEL  search the backup LABEL instead, like 20261030-142501
   --search MODE      keyword or prefix, overrides search in the config
+  --layout LAYOUT    recent or weights, overrides layout in the config
   --typos            match words with one typo, overrides typos in the config
   --no-typos         match words without typos, overrides typos in the config
 
@@ -73,16 +76,18 @@ const DELETE_LAST_ALONE: &str = "delete-last takes no other arguments";
 const PROMPT_TEXT: &str = "--prompt takes the prompt text";
 const BACKUP_LABEL: &str = "--backup-id takes a backup label";
 const SEARCH_MODE: &str = "--search takes a search mode";
+const LAYOUT: &str = "--layout takes a layout";
 const DELETE_BACKUP_LABEL: &str = "backup delete takes a backup label";
 const HOST_NAME: &str = "--host takes a host name";
 
 /// The options of search, each taken once
-const SEARCH_OPTIONS: [&str; 7] = [
+const SEARCH_OPTIONS: [&str; 8] = [
     "--print-query",
     "--prompt",
     "--backup",
     "--backup-id",
     "--search",
+    "--layout",
     "--typos",
     "--no-typos",
 ];
@@ -113,6 +118,8 @@ pub struct Search {
     pub mode: Option<SearchMode>,
     /// Over the config's typos
     pub typos: Option<bool>,
+    /// Over the config's layout
+    pub layout: Option<Layout>,
 }
 
 /// What search reads the commands from
@@ -184,6 +191,10 @@ fn parse_search(args: &[OsString]) -> Result<Args, String> {
             "--search" if options => match args.next() {
                 Some(text) => search.mode = Some(parse_mode(&text.to_string_lossy())?),
                 None => return Err(usage_error(SEARCH_MODE)),
+            },
+            "--layout" if options => match args.next() {
+                Some(text) => search.layout = Some(parse_layout(&text.to_string_lossy())?),
+                None => return Err(usage_error(LAYOUT)),
             },
             "--typos" if options => search.typos = Some(true),
             "--no-typos" if options => search.typos = Some(false),
@@ -330,6 +341,10 @@ fn parse_mode(name: &str) -> Result<SearchMode, String> {
     SearchMode::parse(name).ok_or_else(|| usage_error(&format!("invalid search mode: {name}")))
 }
 
+fn parse_layout(name: &str) -> Result<Layout, String> {
+    Layout::parse(name).ok_or_else(|| usage_error(&format!("invalid layout: {name}")))
+}
+
 fn parse_host(name: &str) -> Result<String, String> {
     match backup::parse_host(name) {
         Some(host) => Ok(host.to_string()),
@@ -436,6 +451,7 @@ mod tests {
                 searched: Searched::History,
                 mode: None,
                 typos: None,
+                layout: None,
             }))
         );
     }
@@ -719,6 +735,35 @@ mod tests {
     }
 
     #[test]
+    fn takes_the_layout_over_the_config() {
+        let with_layout = |layout, query: &str| {
+            Args::Search(Search {
+                query: query.to_string(),
+                layout: Some(layout),
+                ..Search::default()
+            })
+        };
+
+        assert_eq!(
+            parse(&["search", "--layout", "weights", "sbx"]),
+            Ok(with_layout(Layout::Weights, "sbx"))
+        );
+        assert_eq!(
+            parse(&["search", "sbx", "--layout", "recent", "run"]),
+            Ok(with_layout(Layout::Recent, "sbx run"))
+        );
+    }
+
+    #[test]
+    fn rejects_layouts_other_than_one_the_config_takes() {
+        assert_eq!(error(&["search", "--layout"]), LAYOUT);
+        assert_eq!(
+            error(&["search", "--layout", "counts"]),
+            "invalid layout: counts"
+        );
+    }
+
+    #[test]
     fn takes_search_options_after_a_double_dash_for_the_query() {
         assert_eq!(
             parse(&["search", "--", "--search", "prefix", "--no-typos"]),
@@ -747,6 +792,7 @@ mod tests {
             ("--backup", None),
             ("--backup-id", Some(LABEL)),
             ("--search", Some("prefix")),
+            ("--layout", Some("weights")),
             ("--typos", None),
             ("--no-typos", None),
         ] {

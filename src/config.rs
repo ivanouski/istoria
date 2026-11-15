@@ -16,6 +16,7 @@ use crate::context::Context;
 /// The defaults as a config file, for --help and --init-config
 pub const DEFAULT: &str = r#"height  = 12        # rows of the pane, the terminal's at most
 list    = "below"   # or "above" the prompt line, like fzf
+layout  = "recent"  # or "weights": the most run lately first, times at the right
 border  = false     # a line on the far edge of the pane
 preview = false     # the selected command in full when its row is cut
 times   = true      # when each command ran, if the history has times
@@ -28,7 +29,7 @@ count    = "dark-gray"           # matches/commands
 deleted  = "green"               # the status after Ctrl-D
 error    = "red"                 # Ctrl-D asking or failed, the count of no matches
 match    = { fg = "yellow", bold = true }
-dim      = "dark-gray"           # times, run counts, hosts, cuts, dividers, border
+dim      = "dark-gray"           # times, bars, run counts, hosts, cuts, dividers, border
 selected = { bg = "dark-gray" }  # the selected row, under the match
 "#;
 
@@ -43,6 +44,7 @@ pub struct Config {
     #[serde(deserialize_with = "height")]
     pub height: u16,
     pub list: ListPosition,
+    pub layout: Layout,
     /// A line on the pane's edge away from the prompt line
     pub border: bool,
     /// The selected command in full when its row is cut
@@ -62,6 +64,24 @@ pub enum ListPosition {
     #[default]
     Below,
     Above,
+}
+
+/// What the rows show before the commands, and the order of the matches
+#[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Layout {
+    /// Times, the most recent first
+    #[default]
+    Recent,
+    /// Bars of how much each command ran lately, the most first
+    Weights,
+}
+
+impl Layout {
+    /// The names the config takes, for --layout
+    pub fn parse(name: &str) -> Option<Self> {
+        Self::deserialize(de::value::StrDeserializer::<de::value::Error>::new(name)).ok()
+    }
 }
 
 /// How the query matches commands
@@ -87,6 +107,7 @@ impl Default for Config {
         Self {
             height: DEFAULT_HEIGHT,
             list: ListPosition::default(),
+            layout: Layout::default(),
             border: false,
             preview: false,
             times: true,
@@ -115,7 +136,7 @@ pub struct Theme {
     pub error: Style,
     #[serde(rename = "match", deserialize_with = "style")]
     pub matched: Style,
-    /// Times, run counts, hosts and ellipses off the selected row, the dividers and the border
+    /// Times, bars, run counts, hosts and ellipses off the selected row, dividers and the border
     #[serde(deserialize_with = "style")]
     pub dim: Style,
     /// The selected row, under the match
@@ -296,6 +317,7 @@ mod tests {
 
         assert_eq!(config.height, Config::default().height);
         assert_eq!(config.list, Config::default().list);
+        assert_eq!(config.layout, Config::default().layout);
         assert_eq!(config.border, Config::default().border);
         assert_eq!(config.preview, Config::default().preview);
         assert_eq!(config.times, Config::default().times);
@@ -322,6 +344,28 @@ mod tests {
             Config::parse("list = \"above\"\n").unwrap().list,
             ListPosition::Above
         );
+    }
+
+    #[test]
+    fn reads_the_layout() {
+        assert_eq!(Config::parse("").unwrap().layout, Layout::Recent);
+        assert_eq!(
+            Config::parse("layout = \"recent\"\n").unwrap().layout,
+            Layout::Recent
+        );
+        assert_eq!(
+            Config::parse("layout = \"weights\"\n").unwrap().layout,
+            Layout::Weights
+        );
+        assert!(error("layout = \"counts\"\n").contains("unknown variant `counts`"));
+    }
+
+    #[test]
+    fn parses_layout_names_as_the_config_takes_them() {
+        assert_eq!(Layout::parse("recent"), Some(Layout::Recent));
+        assert_eq!(Layout::parse("weights"), Some(Layout::Weights));
+        assert_eq!(Layout::parse("Weights"), None);
+        assert_eq!(Layout::parse(""), None);
     }
 
     #[test]

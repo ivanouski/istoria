@@ -66,12 +66,19 @@ fn run_search(search: Search) -> Result<ExitCode, String> {
     let mut config = Config::load()?;
     config.search = search.mode.unwrap_or(config.search);
     config.typos = search.typos.unwrap_or(config.typos);
+    config.layout = search.layout.unwrap_or(config.layout);
     let mut source = match search.searched {
         Searched::History => Source::History(load_history()?),
         Searched::Backups => backup_source(None)?,
         Searched::Backup(label) => backup_source(Some(label))?,
     };
-    let mut finder = Finder::new(source.entries(), search.query, config.search, config.typos);
+    let mut finder = Finder::new(
+        source.entries(),
+        search.query,
+        config.layout,
+        config.search,
+        config.typos,
+    );
     let prompt = search.prompt.map(|text| prompt::parse(&text));
 
     let outcome =

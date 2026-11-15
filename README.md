@@ -68,10 +68,9 @@ HISTFILESIZE=10000
 
 ## Usage
 
-Up or Down opens istoria with the typed text as the query: Up searches as the [config](#config)
-says, Down always by keyword. Alt-Up or Alt-Down (Option on a Mac) opens it in the
-[backups](#backups), searching as the config says. Ctrl-P and Ctrl-N still step through the
-shell's history.
+Up or Down opens istoria with the typed text as the query, searching as the [config](#config) says.
+Alt-Up or Alt-Down (Option on a Mac) opens it in the [backups](#backups), most recent first
+whatever the layout. Ctrl-P and Ctrl-N still step through the shell's history.
 
 Each word matches anywhere in a command, in any order, ignoring case: `push git` finds
 `git -C api push`. With `search = "prefix"` in the [config](#config) or `--search prefix`, the query
@@ -84,6 +83,30 @@ comp` finds `docker compose up`, listed after the commands that match without ty
 short a character or has the last one changed has to be a whole word, so `giit` and `gix` find `git`
 but not `gist`. With prefix search, only the first word gets a typo. `typos = false` in the
 config or `--no-typos` turns them off, and `--typos` turns them on despite the config.
+
+The list starts with the most recent command, after its time and with how many times it ran. With
+`layout = "weights"` in the config or `--layout weights`, it starts with the command run the most
+lately. A bar of how much takes the place of the time, which moves to the right edge, after the
+hosts in backups. A pane too narrow for the command next to them leaves the hosts out first, then
+the time:
+
+```
+mon› ~/src/istoria› main› sbx
+────────────────────────────────────────────────────────────────────── 25/378 ──
+           ▪▪▪▪▪▪▪▪▪▪▪▪▪  sbx run claude                        2026-11-14 10:04
+                 ▪▪▪▪▪▪▪  sbx logs commands -p -n 100           2026-11-12 15:39
+                  ▪▪▪▪▪▪  sbx run claude -v ../homebrew-tap/ …  2026-11-14 10:42
+```
+
+Each run of a command adds to its weight, a run 1000 commands back half as much as the last one. A
+command run often but long ago sinks below one run a few times in the last few hundred commands.
+The bars are on a log scale against the heaviest command in the history, matched or not, so they
+keep their length as the query changes. A prompt too wide for the bars leaves them out, and the
+number of runs shows instead.
+
+In [backups](#backups) without times, `HISTTIMEFORMAT` unset, every run of a command is the same
+entry, stored once and before the entries with times. Each command then weighs about one old run,
+which is why Alt-Up and Alt-Down search the backups with `--layout recent`.
 
 | Key                           | Action                                   |
 | ----------------------------- | ---------------------------------------- |
@@ -163,6 +186,7 @@ with `--backup-id`. Any other key cancels. Ctrl-D in history leaves backups as t
 ```toml
 height  = 12        # rows of the pane, the terminal's at most
 list    = "below"   # or "above" the prompt line, like fzf
+layout  = "recent"  # or "weights": the most run lately first, times at the right
 border  = false     # a line on the far edge of the pane
 preview = false     # the selected command in full when its row is cut
 times   = true      # when each command ran, if the history has times
@@ -175,7 +199,7 @@ count    = "dark-gray"           # matches/commands
 deleted  = "green"               # the status after Ctrl-D
 error    = "red"                 # Ctrl-D asking or failed, the count of no matches
 match    = { fg = "yellow", bold = true }
-dim      = "dark-gray"           # times, run counts, hosts, cuts, dividers, border
+dim      = "dark-gray"           # times, bars, run counts, hosts, cuts, dividers, border
 selected = { bg = "dark-gray" }  # the selected row, under the match
 ```
 

@@ -32,6 +32,42 @@ class IstoriaListingTest < IstoriaTestCase
     assert_equal ['› clau', 'Claude', 'claude --resume', 'sbx run claude (3)', 'sbx build claude'], pane
   end
 
+  def test_weights_layout_lists_the_most_run_lately_first_with_bars_and_the_times_at_the_right
+    File.write(@history, "#1700000000\nls\n#1700000000\nls\n#1700000000\nls\n#1700003600\nls -la\n")
+    start('--layout', 'weights', 'ls')
+
+    # ls -la weighs about half of ls on the log scale
+    expected = [
+      '› ls',
+      "#{'▪' * 16}  #{'ls'.ljust(44)}2023-11-14 22:13",
+      "#{'▪' * 8}  #{'ls -la'.ljust(44)}2023-11-14 23:13",
+    ]
+
+    assert_equal expected, pane
+  end
+
+  def test_weights_layout_leaves_the_times_out_when_turned_off
+    write_config("times = false\n")
+    File.write(@history, "#1700000000\nls\n#1700000000\nls\n#1700000000\nls\n#1700003600\nls -la\n")
+    start('--layout', 'weights', 'ls')
+
+    assert_equal ['› ls', "#{'▪' * 16}  ls", "#{'▪' * 8}  ls -la"], pane
+  end
+
+  def test_weights_layout_from_the_config
+    write_config(%(layout = "weights"\n))
+    start('clau')
+
+    assert_equal ['› clau', 'sbx run claude', 'Claude', 'claude --resume', 'sbx build claude'], commands_in_pane
+  end
+
+  def test_layout_option_overrides_the_config
+    write_config(%(layout = "weights"\n))
+    start('--layout', 'recent', 'clau')
+
+    assert_equal ['› clau', 'Claude', 'claude --resume', 'sbx run claude (3)', 'sbx build claude'], pane
+  end
+
   def test_lists_matches_with_a_typo_after_the_others
     File.write(@history, "git push\ngti status\ngit log\n")
     start('gti')
@@ -103,5 +139,12 @@ class IstoriaListingTest < IstoriaTestCase
     @session.wait_for { |lines| lines.first == '› claud' }
 
     assert_equal ['› claud', 'Claude', 'claude --resume', 'sbx run claude (3)', 'sbx build claude'], pane
+  end
+
+  private
+
+  # The pane without the weight bars
+  def commands_in_pane
+    pane.map { |line| line.delete('▪').strip }
   end
 end

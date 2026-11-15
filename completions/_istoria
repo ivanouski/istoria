@@ -24,9 +24,10 @@ _istoria() {
 
 # The helpers below read current and add to candidates, both local to _istoria
 
-# The options of search not given yet, backup labels after --backup-id and modes after --search
+# The options of search not given yet, backup labels after --backup-id, modes
+# after --search and layouts after --layout
 _istoria_search() {
-  local word index print_query="" prompt="" backup="" mode="" typos=""
+  local word index print_query="" prompt="" backup="" mode="" layout="" typos=""
 
   for (( index = 2; index < COMP_CWORD; index++ )); do
     word="${COMP_WORDS[index]}"
@@ -36,17 +37,20 @@ _istoria_search() {
       --print-query) print_query=1 ;;
       --backup) backup=1 ;;
       --typos|--no-typos) typos=1 ;;
-      # Their argument is the next word, whatever it looks like: free text, a label or a mode
-      --prompt|--backup-id|--search)
+      # Their argument is the next word, whatever it looks like: free text, a
+      # label, a mode or a layout
+      --prompt|--backup-id|--search|--layout)
         case "${word}" in
           --prompt) prompt=1 ;;
           --backup-id) backup=1 ;;
           --search) mode=1 ;;
+          --layout) layout=1 ;;
         esac
         if (( ++index == COMP_CWORD )); then
           case "${word}" in
             --backup-id) _istoria_labels ;;
             --search) candidates=(keyword prefix) ;;
+            --layout) candidates=(recent weights) ;;
           esac
           return
         fi
@@ -62,11 +66,13 @@ _istoria_search() {
   # The two ways to search backups go apart
   [[ -z "${backup}" ]] && candidates+=(--backup --backup-id)
   [[ -z "${mode}" ]] && candidates+=(--search)
+  [[ -z "${layout}" ]] && candidates+=(--layout)
   # So do typos and no typos
   [[ -z "${typos}" ]] && candidates+=(--typos --no-typos)
 }
 
-# The backup commands or --host, then a label after delete, and the hosts backed up after --host
+# The backup commands or --host, then a label after delete, and the hosts backed
+# up after --host
 _istoria_backup() {
   if (( COMP_CWORD == 2 )); then
     case "${current}" in

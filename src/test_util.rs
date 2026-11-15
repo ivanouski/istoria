@@ -6,13 +6,39 @@ use std::path::PathBuf;
 use std::process;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::config::SearchMode;
-use crate::finder::Finder;
+use crate::config::{Layout, SearchMode};
+use crate::finder::{Command, Finder};
 use crate::history::Entry;
 
-/// Searching words without typos, the matching most tests are not about
+/// Searching words without typos, most recent first, the matching most tests are not about
 pub fn finder(entries: &[Entry], query: &str) -> Finder {
-    Finder::new(entries, query.to_string(), SearchMode::Keyword, false)
+    Finder::new(
+        entries,
+        query.to_string(),
+        Layout::Recent,
+        SearchMode::Keyword,
+        false,
+    )
+}
+
+/// The heaviest first, typos when asked
+pub fn weights_finder(entries: &[Entry], query: &str, typos: bool) -> Finder {
+    Finder::new(
+        entries,
+        query.to_string(),
+        Layout::Weights,
+        SearchMode::Keyword,
+        typos,
+    )
+}
+
+/// A command of the finder, by its text
+pub fn command<'a>(finder: &'a Finder, text: &str) -> &'a Command {
+    finder
+        .commands()
+        .iter()
+        .find(|command| command.text == text)
+        .unwrap()
 }
 
 /// A file in the temp directory, removed when dropped, also when the test fails

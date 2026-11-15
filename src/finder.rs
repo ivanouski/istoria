@@ -7,11 +7,13 @@ use std::ops::Range;
 use chrono::{DateTime, Local};
 use unicode_width::UnicodeWidthStr;
 
-use crate::config::SearchMode;
+use crate::config::{Layout, SearchMode};
 use crate::history::Entry;
 
 const TIME_FORMAT: &str = "%Y-%m-%d %H:%M";
 pub const TIME_WIDTH: usize = "2023-11-14 22:13".len();
+/// Entries after a run that halve what it adds to the weight of its command
+const HALF_LIFE: f64 = 1000.0;
 /// Query words this long or longer match with a typo, shorter ones would match almost anything
 const TYPO_MIN_CHARS: usize = 3;
 
@@ -27,6 +29,8 @@ pub struct Command {
     /// The hosts of its entries' backups, sorted and apart by commas, empty in history
     pub hosts: String,
     pub entry_indices: Vec<usize>,
+    /// How much it ran lately: each run adds 1, halved every `HALF_LIFE` entries after it
+    pub weight: f64,
 }
 
 #[derive(Debug)]
@@ -38,10 +42,14 @@ pub struct Match {
 
 #[derive(Debug)]
 pub struct Finder {
+    /// Most recent first, or the heaviest first in the weights layout
     commands: Vec<Command>,
     has_times: bool,
     /// The widest hosts of a command, 0 without a hosts column
     hosts_width: usize,
+    /// The heaviest weight of the commands, matched or not
+    max_weight: f64,
+    layout: Layout,
     mode: SearchMode,
     /// Whether query words match with a typo, after the commands they match without
     typos: bool,
@@ -54,9 +62,25 @@ pub struct Finder {
 }
 
 impl Finder {
-    pub fn new(entries: &[Entry], query: String, mode: SearchMode, typos: bool) -> Self {
-        let commands = commands(entries);
+    pub fn new(
+        entries: &[Entry],
+        query: String,
+        layout: Layout,
+        mode: SearchMode,
+        typos: bool,
+    ) -> Self {
+        let mut commands = commands(entries);
+
+        if layout == Layout::Weights {
+            // Stable, equal weights stay most recent first
+            commands.sort_by(|a, b| b.weight.total_cmp(&a.weight));
+        }
+
         let mut finder = Self {
+            max_weight: commands
+                .iter()
+                .map(|command| command.weight)
+                .fold(0.0, f64::max),
             has_times: commands.iter().any(|command| command.time.is_some()),
             hosts_width: commands
                 .iter()
@@ -64,6 +88,7 @@ impl Finder {
                 .max()
                 .unwrap_or(0),
             commands,
+            layout,
             mode,
             typos,
             cursor: query.len(),
@@ -78,7 +103,13 @@ impl Finder {
     /// Rebuilds the commands from reloaded entries, keeping the query, its cursor and the selection
     pub fn reload(&mut self, entries: &[Entry]) {
         let (selected, cursor) = (self.selected, self.cursor);
-        *self = Self::new(entries, mem::take(&mut self.query), self.mode, self.typos);
+        *self = Self::new(
+            entries,
+            mem::take(&mut self.query),
+            self.layout,
+            self.mode,
+            self.typos,
+        );
         self.cursor = cursor;
         self.select(selected);
     }
@@ -93,6 +124,20 @@ impl Finder {
 
     pub fn hosts_width(&self) -> usize {
         self.hosts_width
+    }
+
+    pub fn layout(&self) -> Layout {
+        self.layout
+    }
+
+    /// The command's weight on a log scale, from 0 to 1 for the heaviest of all the commands, so a
+    /// command run a few times stands apart from one run once next to one run hundreds of times
+    pub fn weight_share(&self, command: &Command) -> f64 {
+        if self.max_weight > 0.0 {
+            command.weight.ln_1p() / self.max_weight.ln_1p()
+        } else {
+            0.0
+        }
     }
 
     pub fn query(&self) -> &str {
@@ -283,7 +328,7 @@ impl Finder {
                 Some((found, typo))
             })
             .collect();
-        // Stable, the matches with typos go last and stay most recent first
+        // Stable, the matches with typos go last and keep the order of the commands
         matches.sort_by_key(|&(_, typo)| typo);
 
         self.matches = matches.into_iter().map(|(found, _)| found).collect();
@@ -297,6 +342,9 @@ fn commands(entries: &[Entry]) -> Vec<Command> {
     let mut commands: Vec<Command> = Vec::new();
     let mut hosts: Vec<BTreeSet<&str>> = Vec::new();
     let mut positions: HashMap<&str, usize> = HashMap::new();
+    // What a run adds, from 1 for the last entry, halving every HALF_LIFE entries back
+    let decay = 0.5_f64.powf(HALF_LIFE.recip());
+    let mut run_weight = 1.0;
 
     for (index, entry) in entries.iter().enumerate().rev() {
         let text = entry.text.trim_end();
@@ -307,6 +355,7 @@ fn commands(entries: &[Entry]) -> Vec<Command> {
                 time: None,
                 hosts: String::new(),
                 entry_indices: Vec::new(),
+                weight: 0.0,
             });
             hosts.push(BTreeSet::new());
             commands.len() - 1
@@ -314,6 +363,8 @@ fn commands(entries: &[Entry]) -> Vec<Command> {
         let command = &mut commands[position];
 
         command.entry_indices.push(index);
+        command.weight += run_weight;
+        run_weight *= decay;
         command.time = command.time.take().or_else(|| local_time(entry.time?));
         hosts[position].extend(entry.hosts.iter().map(String::as_str));
     }
@@ -871,7 +922,7 @@ lsof
 ls
 ",
         );
-        let finder = |mode| Finder::new(&entries, "ls ".to_string(), mode, false);
+        let finder = |mode| Finder::new(&entries, "ls ".to_string(), Layout::Recent, mode, false);
 
         assert_eq!(
             texts(&finder(SearchMode::Keyword)),
@@ -887,7 +938,13 @@ ls
 ls
 ",
         );
-        let mut finder = Finder::new(&entries, "ls".to_string(), SearchMode::Prefix, false);
+        let mut finder = Finder::new(
+            &entries,
+            "ls".to_string(),
+            Layout::Recent,
+            SearchMode::Prefix,
+            false,
+        );
 
         finder.reload(&entries);
 
@@ -902,7 +959,13 @@ gti status
 git log
 ",
         );
-        let finder = Finder::new(&entries, "gti".to_string(), SearchMode::Keyword, true);
+        let finder = Finder::new(
+            &entries,
+            "gti".to_string(),
+            Layout::Recent,
+            SearchMode::Keyword,
+            true,
+        );
 
         assert_eq!(texts(&finder), ["gti status", "git log", "git push"]);
     }
@@ -910,7 +973,15 @@ git log
     #[test]
     fn matches_typos_only_when_asked() {
         let entries = history::parse(b"git push\n");
-        let finder = |typos| Finder::new(&entries, "gti".to_string(), SearchMode::Keyword, typos);
+        let finder = |typos| {
+            Finder::new(
+                &entries,
+                "gti".to_string(),
+                Layout::Recent,
+                SearchMode::Keyword,
+                typos,
+            )
+        };
 
         assert_eq!(finder(true).matches().len(), 1);
         assert!(finder(false).matches().is_empty());
@@ -919,11 +990,94 @@ git log
     #[test]
     fn keeps_typos_on_reload() {
         let entries = history::parse(b"git push\n");
-        let mut finder = Finder::new(&entries, "gti".to_string(), SearchMode::Keyword, true);
+        let mut finder = Finder::new(
+            &entries,
+            "gti".to_string(),
+            Layout::Recent,
+            SearchMode::Keyword,
+            true,
+        );
 
         finder.reload(&entries);
 
         assert_eq!(finder.matches().len(), 1);
+    }
+
+    #[test]
+    fn weighs_each_run_halved_every_half_life_of_entries_after_it() {
+        let mut content = b"old\n".to_vec();
+        for _ in 0..1000 {
+            content.extend_from_slice(b"new\nnew\n");
+        }
+        let finder = test_util::weights_finder(&history::parse(&content), "", false);
+
+        // 2000 entries after it, two half-lives
+        assert!((test_util::command(&finder, "old").weight - 0.25).abs() < 1e-9);
+        // 1 for the last run, halving every 1000 runs: (1 - 1/4) / (1 - 2^(-1/1000))
+        let new = test_util::command(&finder, "new").weight;
+        assert!((1082.0..1083.0).contains(&new), "{new}");
+    }
+
+    #[test]
+    fn lists_the_heaviest_first_in_the_weights_layout() {
+        let finder = test_util::weights_finder(
+            &history::parse(b"ls -la\nls\nls\nls\nls -l\nls -la\n"),
+            "ls",
+            false,
+        );
+
+        assert_eq!(texts(&finder), ["ls", "ls -la", "ls -l"]);
+    }
+
+    #[test]
+    fn lists_typos_after_the_others_in_the_weights_layout() {
+        let finder = test_util::weights_finder(
+            &history::parse(b"gti status\ngti status\ngti status\ngit log\n"),
+            "gti",
+            true,
+        );
+
+        assert_eq!(texts(&finder), ["gti status", "git log"]);
+
+        let finder = test_util::weights_finder(
+            &history::parse(b"git log\ngit log\ngit log\ngti status\ngit push\n"),
+            "gti",
+            true,
+        );
+
+        assert_eq!(texts(&finder), ["gti status", "git log", "git push"]);
+    }
+
+    #[test]
+    fn shares_the_weight_of_the_heaviest_of_all_commands_whatever_the_query() {
+        let content = b"ls\nls\nls\npwd\n";
+        let all = test_util::weights_finder(&history::parse(content), "", false);
+        let pwd = test_util::weights_finder(&history::parse(content), "pwd", false);
+        let share = |finder: &Finder, text| finder.weight_share(test_util::command(finder, text));
+
+        assert!((share(&all, "pwd") - share(&pwd, "pwd")).abs() < 1e-12);
+        assert!(
+            (0.49..0.51).contains(&share(&pwd, "pwd")),
+            "{}",
+            share(&pwd, "pwd")
+        );
+        assert!((share(&all, "ls") - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn keeps_the_weights_layout_on_reload() {
+        let entries = history::parse(b"ls\nls\nls -la\n");
+        let mut finder = Finder::new(
+            &entries,
+            "ls".to_string(),
+            Layout::Weights,
+            SearchMode::Keyword,
+            false,
+        );
+
+        finder.reload(&entries);
+
+        assert_eq!(texts(&finder), ["ls", "ls -la"]);
     }
 
     #[test]

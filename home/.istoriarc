@@ -8,13 +8,15 @@
 (( BASH_VERSINFO[0] >= 4 )) || return
 command -v istoria > /dev/null || return
 
-# Puts the command picked with istoria on the line, the arguments go to istoria search too. It
-# passes --print-query and --prompt itself, which istoria takes once: ISTORIA_PROMPT sets the prompt.
+# Puts the command picked with istoria on the line, the arguments go to istoria
+# search too. It passes --print-query and --prompt itself, which istoria takes
+# once: ISTORIA_PROMPT sets the prompt.
 __istoria_search() {
   local line status
   local -a options=(--print-query "$@")
 
-  # ${PS1@P} needs bash 4.4, ISTORIA_SHELL_PROMPT=false keeps it from running PS1's $(...) again
+  # ${PS1@P} needs bash 4.4, ISTORIA_SHELL_PROMPT=false keeps it from running
+  # PS1's $(...) again
   if (( BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] >= 404 )); then
     if [[ -n ${ISTORIA_PROMPT-} ]]; then
       options+=(--prompt "${ISTORIA_PROMPT@P}")
@@ -28,7 +30,8 @@ __istoria_search() {
   line=$(HISTFILE=${HISTFILE} istoria search "${options[@]}" -- "${READLINE_LINE}")
   status=$?
 
-  # 0: picked command, 3: query left with Esc, 4: command to edit; anything else keeps the line
+  # 0: picked command, 3: query left with Esc, 4: command to edit; anything else
+  # keeps the line
   if (( status == 0 || status == 3 || status == 4 )) && [[ ${line} != "${READLINE_LINE}" ]]; then
     READLINE_LINE=${line}
     READLINE_POINT=${#line}
@@ -42,14 +45,15 @@ __istoria_search() {
   fi
 }
 
-# Each key runs a macro of two fake keys, no terminal sends them: one opens istoria, the other runs
-# the pick. Up searches as the config says, Down by keyword. Alt-arrows send \e[1;3A.
+# Each key runs a macro of two fake keys, no terminal sends them:
+# one opens istoria, the other runs the pick.
+# Up and Down search as the config says. Alt-arrows send \e[1;3A and search the
+# backups most recent first, where runs without times would weigh too little.
 bind -x '"\e[9100~": __istoria_search'
-bind -x '"\e[9102~": __istoria_search --backup'
-bind -x '"\e[9103~": __istoria_search --search keyword'
+bind -x '"\e[9102~": __istoria_search --backup --layout recent'
 bind '"\e[A": "\e[9100~\e[9101~"'
 bind '"\eOA": "\e[9100~\e[9101~"'
-bind '"\e[B": "\e[9103~\e[9101~"'
-bind '"\eOB": "\e[9103~\e[9101~"'
+bind '"\e[B": "\e[9100~\e[9101~"'
+bind '"\eOB": "\e[9100~\e[9101~"'
 bind '"\e[1;3A": "\e[9102~\e[9101~"'
 bind '"\e[1;3B": "\e[9102~\e[9101~"'

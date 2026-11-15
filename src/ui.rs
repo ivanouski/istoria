@@ -9,7 +9,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListDirection, ListItem, ListState, Paragraph};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-use crate::config::{Config, ListPosition, Theme};
+use crate::config::{self, Config, ListPosition, Theme};
 use crate::finder::{Command, Finder, Match, TIME_WIDTH};
 
 /// Before rows that don't line up under the query
@@ -17,10 +17,13 @@ const INDENT: usize = 2;
 const TIME_COLUMN: usize = TIME_WIDTH + 2;
 /// Most columns of the hosts at the right edge, before the gap after the command
 const MAX_HOSTS_WIDTH: usize = 20;
-const HOSTS_GAP: usize = 2;
-/// Left for the command next to the hosts, else they aren't shown
+/// Before the hosts and the time at the right edge
+const EDGE_GAP: usize = 2;
+/// Left for the command next to the hosts or the time at the right edge, else they aren't shown
 const MIN_COMMAND_WIDTH: usize = 20;
 const ELLIPSIS: &str = "…";
+/// A step of the weight bars, in a column as wide as the times
+const WEIGHT: &str = "▪";
 const NO_MATCHES: &str = "no matches";
 const NO_COMMANDS: &str = "no commands";
 /// Most lines of the preview
@@ -52,17 +55,14 @@ pub fn draw(
     let (theme, list) = (&config.colors, config.list);
     let area = frame.area();
     let shell_prompt = shell_prompt(prompt, area.width);
-    // A pane too narrow for the prompt is too narrow for the times as well
-    let times = config.times
-        && finder.has_times()
-        && !prompt.is_some_and(|prompt| too_wide(prompt, area.width));
     let prompt_line = prompt_line(shell_prompt, label, theme);
     // Under the query after a shell prompt, which a label moves along
     let layout = RowLayout::new(
-        times,
+        finder,
+        config,
+        prompt,
         shell_prompt.map(|_| prompt_line.width()),
         area.width,
-        finder.hosts_width(),
     );
     let [prompt_area, divider_area, body] = split(area, list);
     let (body, border_area) = split_border(body, config.border, list);
@@ -330,7 +330,6 @@ fn count(finder: &Finder, theme: &Theme, status: Option<&Status>) -> (String, St
 
 /// In place of the list when nothing matches, where the commands would start
 fn nothing_found(finder: &Finder, layout: &RowLayout, theme: &Theme) -> Line<'static> {
-    let time_width = if layout.times { TIME_COLUMN } else { 0 };
     let text = if finder.commands().is_empty() {
         NO_COMMANDS
     } else {
@@ -338,45 +337,88 @@ fn nothing_found(finder: &Finder, layout: &RowLayout, theme: &Theme) -> Line<'st
     };
 
     Line::from(vec![
-        Span::raw(" ".repeat(layout.indent.len() + time_width)),
+        Span::raw(" ".repeat(layout.indent.len() + layout.column_width())),
         Span::styled(text, theme.dim),
     ])
 }
 
+/// What goes before the commands
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Column {
+    Times,
+    Weights,
+}
+
 /// What every row starts with
 struct RowLayout {
-    times: bool,
-    /// Before the time, or before the command without times
+    column: Option<Column>,
+    /// After the commands run more than once, in the recent layout
+    runs: bool,
+    /// Before the column, or before the command without it
     indent: String,
     /// Left for the command and its number of runs
     command_width: usize,
     /// Of the hosts at the right edge, 0 without them
     hosts_width: usize,
+    /// The time at the right edge, after the hosts, in the weights layout
+    edge_time: bool,
     pane_width: usize,
 }
 
 impl RowLayout {
-    /// The hosts take up to their widest, when that leaves the command room
-    fn new(times: bool, prompt_width: Option<usize>, pane_width: u16, hosts_width: usize) -> Self {
-        let time_width = if times { TIME_COLUMN } else { 0 };
-        let column = command_column(prompt_width, time_width);
+    /// The time at the right edge, then the hosts up to their widest, when that leaves the command
+    /// room
+    fn new(
+        finder: &Finder,
+        config: &Config,
+        prompt: Option<&Line>,
+        prompt_width: Option<usize>,
+        pane_width: u16,
+    ) -> Self {
+        let column = column(finder, config, prompt, pane_width);
+        // Without the bars, the runs still tell why the weights put a command first
+        let runs = finder.layout() == config::Layout::Recent || column.is_none();
+        let column_width = column_width(column);
+        let command_column = command_column(prompt_width, column_width);
         let pane_width = usize::from(pane_width);
-        let room = pane_width.saturating_sub(column);
-        let hosts_width = Some(hosts_width.min(MAX_HOSTS_WIDTH))
-            .filter(|&width| width > 0 && room >= MIN_COMMAND_WIDTH + HOSTS_GAP + width);
+        let mut room = pane_width.saturating_sub(command_column);
+        let mut edge = |width: usize| {
+            let fits = width > 0 && room >= MIN_COMMAND_WIDTH + EDGE_GAP + width;
+            if fits {
+                room -= EDGE_GAP + width;
+            }
+
+            fits
+        };
+        let edge_time = finder.layout() == config::Layout::Weights
+            && config.times
+            && finder.has_times()
+            && edge(TIME_WIDTH);
+        let hosts_width = finder.hosts_width().min(MAX_HOSTS_WIDTH);
+        let hosts_width = if edge(hosts_width) { hosts_width } else { 0 };
 
         Self {
-            times,
-            indent: " ".repeat(column - time_width),
-            command_width: hosts_width.map_or(room, |width| room - HOSTS_GAP - width),
-            hosts_width: hosts_width.unwrap_or(0),
+            column,
+            runs,
+            indent: " ".repeat(command_column - column_width),
+            command_width: room,
+            hosts_width,
+            edge_time,
             pane_width,
         }
     }
 
+    fn column_width(&self) -> usize {
+        column_width(self.column)
+    }
+
+    fn runs(&self, command: &Command) -> Option<String> {
+        self.runs.then(|| runs(command)).flatten()
+    }
+
     /// The part of a command its row shows, keeping the matches in view
     fn fit(&self, command: &Command, ranges: &[Range<usize>]) -> Fitted {
-        let runs_width = runs(command).map_or(0, |runs| runs.width());
+        let runs_width = self.runs(command).map_or(0, |runs| runs.width());
 
         fit(
             &command.text,
@@ -384,6 +426,26 @@ impl RowLayout {
             self.command_width.saturating_sub(runs_width),
         )
     }
+}
+
+/// The times or the weights. A pane too narrow for the prompt is too narrow for them as well.
+fn column(
+    finder: &Finder,
+    config: &Config,
+    prompt: Option<&Line>,
+    pane_width: u16,
+) -> Option<Column> {
+    let column = match finder.layout() {
+        config::Layout::Recent => (config.times && finder.has_times()).then_some(Column::Times),
+        config::Layout::Weights => Some(Column::Weights),
+    };
+
+    column.filter(|_| !prompt.is_some_and(|prompt| too_wide(prompt, pane_width)))
+}
+
+/// Of the times or the weights and the gap after them, 0 without them
+fn column_width(column: Option<Column>) -> usize {
+    if column.is_some() { TIME_COLUMN } else { 0 }
 }
 
 /// Under the query, the times before it, unless the prompt is missing or too narrow for them
@@ -406,9 +468,16 @@ fn row<'a>(
     let fitted = layout.fit(command, &found.ranges);
     let mut spans = vec![Span::raw(layout.indent.as_str())];
 
-    if layout.times {
-        let time = command.time.as_deref().unwrap_or_default();
-        spans.push(Span::styled(format!("{time:<TIME_WIDTH$}  "), dim));
+    match layout.column {
+        Some(Column::Times) => {
+            let time = command.time.as_deref().unwrap_or_default();
+            spans.push(Span::styled(format!("{time:<TIME_WIDTH$}  "), dim));
+        }
+        Some(Column::Weights) => {
+            let bar = WEIGHT.repeat(weight_steps(finder.weight_share(command)));
+            spans.push(Span::styled(format!("{bar:>TIME_WIDTH$}  "), dim));
+        }
+        None => {}
     }
 
     if fitted.cut_start {
@@ -426,17 +495,28 @@ fn row<'a>(
         spans.push(Span::styled(ELLIPSIS, dim));
     }
 
-    if let Some(runs) = runs(command) {
+    if let Some(runs) = layout.runs(command) {
         spans.push(Span::styled(runs, dim));
     }
 
+    let mut edge = Vec::new();
+
     if layout.hosts_width > 0 {
+        edge.push(cut(&command.hosts, layout.hosts_width));
+    }
+
+    if layout.edge_time {
+        let time = command.time.as_deref().unwrap_or_default();
+        edge.push(format!("{time:<TIME_WIDTH$}"));
+    }
+
+    if !edge.is_empty() {
         // At the right edge, the command fits before the gap
-        let hosts = cut(&command.hosts, layout.hosts_width);
+        let edge = edge.join(&" ".repeat(EDGE_GAP));
         let used: usize = spans.iter().map(Span::width).sum();
-        let padding = layout.pane_width.saturating_sub(used + hosts.width());
+        let padding = layout.pane_width.saturating_sub(used + edge.width());
         spans.push(Span::raw(" ".repeat(padding)));
-        spans.push(Span::styled(hosts, dim));
+        spans.push(Span::styled(edge, dim));
     }
 
     // Styled per item, a list highlight style would cover the match
@@ -447,6 +527,16 @@ fn row<'a>(
     } else {
         item
     }
+}
+
+/// The squares of a weight bar for its share of the heaviest weight, rounded, at least one
+fn weight_steps(share: f64) -> usize {
+    let width = u16::try_from(TIME_WIDTH).unwrap_or(u16::MAX);
+    let scaled = share * f64::from(width);
+
+    1 + (1..width)
+        .filter(|&step| scaled >= f64::from(step) + 0.5)
+        .count()
 }
 
 /// After a command run more than once
@@ -1229,6 +1319,157 @@ mod tests {
         // Still under the query
         assert_eq!(first_command_column(&after_prompt), prompt.len());
         assert_eq!(text(&after_prompt, FIRST_ROW).trim(), "ls");
+    }
+
+    /// ls ran three times, ls -la once after it: lighter, but more recent
+    const RUNS: &str = "ls\nls\nls\nls -la\n";
+
+    #[test]
+    fn shows_weight_bars_in_place_of_the_times_without_the_runs() {
+        let finder = test_util::weights_finder(&history::parse(RUNS.as_bytes()), "ls", false);
+        let buffer = Render::new(&finder).run().buffer;
+
+        assert_eq!(
+            text(&buffer, FIRST_ROW).trim_end(),
+            format!("  {}  ls", WEIGHT.repeat(16))
+        );
+        // ln 2 / ln 4 of the heaviest, half the squares
+        assert_eq!(
+            text(&buffer, FIRST_ROW + 1).trim_end(),
+            format!("  {}{}  ls -la", " ".repeat(8), WEIGHT.repeat(8))
+        );
+        // Dimmed off the selected row
+        assert!((2..18).all(|x| buffer[(x, FIRST_ROW)].fg == Color::Reset));
+        assert!((10..18).all(|x| buffer[(x, FIRST_ROW + 1)].fg == Color::DarkGray));
+    }
+
+    #[test]
+    fn shows_weight_bars_whatever_the_times() {
+        let finder = test_util::weights_finder(
+            &history::parse(format!("#1700000000\n{RUNS}").as_bytes()),
+            "ls",
+            false,
+        );
+        let buffer = Render::new(&finder).no_times().run().buffer;
+
+        assert!(text(&buffer, FIRST_ROW).starts_with(&format!("  {}  ls", WEIGHT.repeat(16))));
+    }
+
+    #[test]
+    fn shows_the_runs_for_weight_bars_hidden_by_a_prompt_wider_than_60_percent_of_the_pane() {
+        let finder = test_util::weights_finder(&history::parse(RUNS.as_bytes()), "ls", false);
+        let wide_prompt = format!("{}$ ", "d".repeat(23));
+        let buffer = Render::new(&finder).prompt(&wide_prompt).run().buffer;
+
+        assert_eq!(text(&buffer, FIRST_ROW).trim_end(), "  ls (3)");
+        assert_eq!(text(&buffer, FIRST_ROW + 1).trim_end(), "  ls -la");
+    }
+
+    #[test]
+    fn rounds_weight_bars_to_squares_with_at_least_one() {
+        assert_eq!(weight_steps(0.0), 1);
+        assert_eq!(weight_steps(0.46), 7);
+        assert_eq!(weight_steps(0.47), 8);
+        assert_eq!(weight_steps(1.0), 16);
+    }
+
+    /// RUNS with times, ls -la an hour after
+    const TIMED_RUNS: &str =
+        "#1700000000\nls\n#1700000000\nls\n#1700000000\nls\n#1700003600\nls -la\n";
+
+    /// The time of a command as the finder shows it, in the local time zone
+    fn time_of(finder: &Finder, text: &str) -> String {
+        test_util::command(finder, text).time.clone().unwrap()
+    }
+
+    #[test]
+    fn shows_the_times_at_the_right_edge_with_weight_bars_dimmed_off_the_selected_row() {
+        let finder = test_util::weights_finder(&history::parse(TIMED_RUNS.as_bytes()), "ls", false);
+        let buffer = Render::new(&finder).width(60).run().buffer;
+
+        assert_eq!(
+            text(&buffer, FIRST_ROW),
+            format!(
+                "{:<44}{}",
+                format!("  {}  ls", WEIGHT.repeat(16)),
+                time_of(&finder, "ls")
+            )
+        );
+        assert_eq!(
+            text(&buffer, FIRST_ROW + 1),
+            format!(
+                "{:<44}{}",
+                format!("          {}  ls -la", WEIGHT.repeat(8)),
+                time_of(&finder, "ls -la")
+            )
+        );
+        assert!((44..60).all(|x| buffer[(x, FIRST_ROW)].fg == Color::Reset));
+        assert!((44..60).all(|x| buffer[(x, FIRST_ROW + 1)].fg == Color::DarkGray));
+    }
+
+    #[test]
+    fn leaves_the_times_out_of_the_weights_layout_when_turned_off() {
+        let finder = test_util::weights_finder(&history::parse(TIMED_RUNS.as_bytes()), "ls", false);
+        let buffer = Render::new(&finder).width(60).no_times().run().buffer;
+
+        assert_eq!(
+            text(&buffer, FIRST_ROW).trim_end(),
+            format!("  {}  ls", WEIGHT.repeat(16))
+        );
+    }
+
+    #[test]
+    fn leaves_the_times_out_of_a_pane_too_narrow_for_the_command_next_to_them() {
+        let finder = test_util::weights_finder(&history::parse(TIMED_RUNS.as_bytes()), "ls", false);
+        // 20 columns left for the command, 18 short of the time and its gap
+        let buffer = Render::new(&finder).width(40).run().buffer;
+
+        assert_eq!(
+            text(&buffer, FIRST_ROW).trim_end(),
+            format!("  {}  ls", WEIGHT.repeat(16))
+        );
+    }
+
+    /// A command from a backup on mac, with its time, in the weights layout
+    fn timed_backup_finder() -> Finder {
+        let entry = Entry::new(
+            "ls".to_string(),
+            Some(1_700_000_000),
+            vec!["mac".to_string()],
+        );
+
+        test_util::weights_finder(&[entry], "", false)
+    }
+
+    #[test]
+    fn shows_the_hosts_before_the_time_at_the_right_edge() {
+        let finder = timed_backup_finder();
+        let buffer = Render::new(&finder).width(80).run().buffer;
+
+        assert_eq!(
+            text(&buffer, FIRST_ROW),
+            format!(
+                "{:<59}mac  {}",
+                format!("  {}  ls", WEIGHT.repeat(16)),
+                time_of(&finder, "ls")
+            )
+        );
+    }
+
+    #[test]
+    fn leaves_the_hosts_out_before_the_time() {
+        let finder = timed_backup_finder();
+        // 22 columns left for the command after the time, 3 short of the hosts and their gap
+        let buffer = Render::new(&finder).width(60).run().buffer;
+
+        assert_eq!(
+            text(&buffer, FIRST_ROW),
+            format!(
+                "{:<44}{}",
+                format!("  {}  ls", WEIGHT.repeat(16)),
+                time_of(&finder, "ls")
+            )
+        );
     }
 
     /// Commands from backups with their hosts, oldest first, without a query
