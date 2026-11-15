@@ -43,8 +43,10 @@ pub struct Match {
 
 #[derive(Debug)]
 pub struct Finder {
-    /// Most recent first, or the heaviest first in the weights layout
+    /// Most recent first
     commands: Vec<Command>,
+    /// Indices into the commands, the heaviest first, in the weights layout
+    by_weight: Vec<usize>,
     has_times: bool,
     /// The widest hosts of a command, 0 without a hosts column
     hosts_width: usize,
@@ -70,11 +72,13 @@ impl Finder {
         mode: SearchMode,
         typos: bool,
     ) -> Self {
-        let mut commands = commands(entries);
+        let commands = commands(entries);
+        let mut by_weight = Vec::new();
 
         if layout == Layout::Weights {
+            by_weight.extend(0..commands.len());
             // Stable, equal weights stay most recent first
-            commands.sort_by(|a, b| b.weight.total_cmp(&a.weight));
+            by_weight.sort_by(|&a, &b| commands[b].weight.total_cmp(&commands[a].weight));
         }
 
         let mut finder = Self {
@@ -89,6 +93,7 @@ impl Finder {
                 .max()
                 .unwrap_or(0),
             commands,
+            by_weight,
             layout,
             mode,
             typos,
@@ -315,11 +320,13 @@ impl Finder {
             SearchMode::Prefix => find_prefix,
         };
 
-        let mut matches: Vec<_> = self
-            .commands
-            .iter()
-            .enumerate()
-            .filter_map(|(command_index, Command { text, .. })| {
+        // Without a query the weights wait, so the last command is first, as in the shell's history
+        let order = (!self.query.trim().is_empty() && !self.by_weight.is_empty())
+            .then_some(self.by_weight.as_slice());
+        let mut matches: Vec<_> = (0..self.commands.len())
+            .map(|index| order.map_or(index, |order| order[index]))
+            .filter_map(|command_index| {
+                let text = &self.commands[command_index].text;
                 let (ranges, typo) = find(text, &self.query, self.typos)?;
                 let found = Match {
                     command_index,
@@ -1107,6 +1114,34 @@ git log
             share(&pwd, "pwd")
         );
         assert!((share(&all, "ls") - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn lists_the_most_recent_first_without_a_query_in_the_weights_layout() {
+        let entries = history::parse(b"ls\nls\nls\npwd\n");
+
+        for query in ["", "  "] {
+            assert_eq!(
+                texts(&test_util::weights_finder(&entries, query, false)),
+                ["pwd", "ls"]
+            );
+        }
+    }
+
+    #[test]
+    fn weighs_the_matches_from_the_first_word_of_the_query() {
+        let mut finder =
+            test_util::weights_finder(&history::parse(b"ls\nls\nls\nls -la\n"), "", false);
+
+        assert_eq!(texts(&finder), ["ls -la", "ls"]);
+
+        finder.push('l');
+
+        assert_eq!(texts(&finder), ["ls", "ls -la"]);
+
+        finder.delete_back();
+
+        assert_eq!(texts(&finder), ["ls -la", "ls"]);
     }
 
     #[test]

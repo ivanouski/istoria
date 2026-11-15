@@ -53,6 +53,18 @@ class IstoriarcTest < IstoriaTestCase
     @session.wait_for { |lines| lines.first(3) == ['$ echo picked', 'picked', '$'] }
   end
 
+  def test_up_and_enter_on_an_empty_line_run_the_last_command_in_the_weights_layout
+    File.write(@history, "echo heavy\necho heavy\necho heavy\necho last\n")
+    write_config(layout: 'weights', home: File.join(@tmp_dir, '.config'))
+    start_bash
+
+    @session.press(:up)
+    wait_for_istoria_in_bash
+    @session.press(:enter)
+
+    @session.wait_for { |lines| lines.first(3) == ['$ echo last', 'last', '$'] }
+  end
+
   def test_option_up_searches_the_backups_for_the_typed_text_and_enter_runs_the_command
     File.write(@history, "echo backed up\nls\n")
     run_istoria('backup', env: { 'XDG_DATA_HOME' => nil, 'HOME' => @tmp_dir })

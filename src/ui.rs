@@ -1,5 +1,6 @@
 //! Drawing the finder: the prompt line, the divider, the list and the preview
 
+use std::iter;
 use std::ops::Range;
 
 use ratatui::Frame;
@@ -22,8 +23,6 @@ const EDGE_GAP: usize = 2;
 /// Left for the command next to the hosts or the time at the right edge, else they aren't shown
 const MIN_COMMAND_WIDTH: usize = 20;
 const ELLIPSIS: &str = "…";
-/// A step of the weight bars, in a column as wide as the times
-const WEIGHT: &str = "▪";
 const NO_MATCHES: &str = "no matches";
 const NO_COMMANDS: &str = "no commands";
 /// Most lines of the preview
@@ -362,6 +361,8 @@ struct RowLayout {
     hosts_width: usize,
     /// The time at the right edge, after the hosts, in the weights layout
     edge_time: bool,
+    /// A step of the weight bars
+    bar: char,
     pane_width: usize,
 }
 
@@ -404,6 +405,7 @@ impl RowLayout {
             command_width: room,
             hosts_width,
             edge_time,
+            bar: config.bar,
             pane_width,
         }
     }
@@ -474,7 +476,8 @@ fn row<'a>(
             spans.push(Span::styled(format!("{time:<TIME_WIDTH$}  "), dim));
         }
         Some(Column::Weights) => {
-            let bar = WEIGHT.repeat(weight_steps(finder.weight_share(command)));
+            let steps = weight_steps(finder.weight_share(command));
+            let bar: String = iter::repeat_n(layout.bar, steps).collect();
             spans.push(Span::styled(format!("{bar:>TIME_WIDTH$}  "), dim));
         }
         None => {}
@@ -769,17 +772,13 @@ mod tests {
         finder
     }
 
-    /// Draws on a 40 by 4 terminal unless set otherwise
+    /// Draws on a 40 by 4 terminal with the test config unless set otherwise
     struct Render<'a> {
         finder: &'a Finder,
-        theme: Theme,
+        config: Config,
         prompt: Option<&'a str>,
         label: Option<&'a str>,
         status: Option<Status>,
-        list: ListPosition,
-        border: bool,
-        preview: bool,
-        times: bool,
         width: u16,
         height: u16,
         offset: usize,
@@ -796,22 +795,19 @@ mod tests {
         fn new(finder: &'a Finder) -> Self {
             Self {
                 finder,
-                theme: Theme::default(),
+                config: test_util::config(),
                 prompt: None,
                 label: None,
                 status: None,
-                list: ListPosition::Below,
-                border: false,
-                preview: false,
-                times: true,
                 width: 40,
                 height: 4,
                 offset: 0,
             }
         }
 
-        fn theme(self, theme: Theme) -> Self {
-            Self { theme, ..self }
+        fn theme(mut self, theme: Theme) -> Self {
+            self.config.colors = theme;
+            self
         }
 
         fn prompt(self, prompt: &'a str) -> Self {
@@ -835,32 +831,29 @@ mod tests {
             }
         }
 
-        fn above(self) -> Self {
-            Self {
-                list: ListPosition::Above,
-                ..self
-            }
+        fn above(mut self) -> Self {
+            self.config.list = ListPosition::Above;
+            self
         }
 
-        fn border(self) -> Self {
-            Self {
-                border: true,
-                ..self
-            }
+        fn border(mut self) -> Self {
+            self.config.border = true;
+            self
         }
 
-        fn preview(self) -> Self {
-            Self {
-                preview: true,
-                ..self
-            }
+        fn preview(mut self) -> Self {
+            self.config.preview = true;
+            self
         }
 
-        fn no_times(self) -> Self {
-            Self {
-                times: false,
-                ..self
-            }
+        fn no_times(mut self) -> Self {
+            self.config.times = false;
+            self
+        }
+
+        fn bar(mut self, bar: char) -> Self {
+            self.config.bar = bar;
+            self
         }
 
         fn width(self, width: u16) -> Self {
@@ -878,14 +871,6 @@ mod tests {
         fn run(self) -> Rendered {
             let prompt = self.prompt.map(prompt::parse);
             let mut terminal = Terminal::new(TestBackend::new(self.width, self.height)).unwrap();
-            let config = Config {
-                list: self.list,
-                border: self.border,
-                preview: self.preview,
-                times: self.times,
-                colors: self.theme,
-                ..Config::default()
-            };
             let mut offset = self.offset;
             let mut page = 0;
             terminal
@@ -893,7 +878,7 @@ mod tests {
                     page = draw(
                         frame,
                         self.finder,
-                        &config,
+                        &self.config,
                         prompt.as_ref(),
                         self.label,
                         self.status.as_ref(),
@@ -983,7 +968,7 @@ mod tests {
     #[test]
     fn says_so_where_the_commands_would_start_when_nothing_matches() {
         let finder = test_util::finder(&history::parse(HISTORY.as_bytes()), "pwd");
-        let theme = Theme::default();
+        let theme = test_util::theme();
         let buffer = Render::new(&finder).run().buffer;
 
         assert_eq!(
@@ -1021,7 +1006,7 @@ mod tests {
             matched: Style::new().fg(Color::Red),
             dim: Style::new().fg(Color::Gray),
             selected: Style::new().bg(Color::Blue),
-            ..Theme::default()
+            ..test_util::theme()
         };
         let buffer = Render::new(&finder(HISTORY)).theme(theme).run().buffer;
 
@@ -1053,7 +1038,7 @@ mod tests {
     fn shows_the_label_before_the_query_in_its_color() {
         let theme = Theme {
             backup: Style::new().fg(Color::Magenta),
-            ..Theme::default()
+            ..test_util::theme()
         };
         let rendered = Render::new(&finder("ls\n"))
             .label("backup:20261030-142501")
@@ -1157,7 +1142,7 @@ mod tests {
     fn keeps_the_count_in_its_color_after_a_long_query() {
         let finder = query_finder("0123456789abcdefghij", false);
         let buffer = Render::new(&finder).width(20).run().buffer;
-        let theme = Theme::default();
+        let theme = test_util::theme();
 
         assert_eq!(
             text(&buffer, DIVIDER_ROW),
@@ -1192,7 +1177,7 @@ mod tests {
         );
         assert_eq!(
             buffer[(6, DIVIDER_ROW)].fg,
-            Theme::default().error.fg.unwrap()
+            test_util::theme().error.fg.unwrap()
         );
     }
 
@@ -1324,6 +1309,11 @@ mod tests {
     /// ls ran three times, ls -la once after it: lighter, but more recent
     const RUNS: &str = "ls\nls\nls\nls -la\n";
 
+    /// A weight bar of the test config's steps
+    fn bars(steps: usize) -> String {
+        String::from(test_util::config().bar).repeat(steps)
+    }
+
     #[test]
     fn shows_weight_bars_in_place_of_the_times_without_the_runs() {
         let finder = test_util::weights_finder(&history::parse(RUNS.as_bytes()), "ls", false);
@@ -1331,16 +1321,31 @@ mod tests {
 
         assert_eq!(
             text(&buffer, FIRST_ROW).trim_end(),
-            format!("  {}  ls", WEIGHT.repeat(16))
+            format!("  {}  ls", bars(16))
         );
         // ln 2 / ln 4 of the heaviest, half the squares
         assert_eq!(
             text(&buffer, FIRST_ROW + 1).trim_end(),
-            format!("  {}{}  ls -la", " ".repeat(8), WEIGHT.repeat(8))
+            format!("  {}{}  ls -la", " ".repeat(8), bars(8))
         );
         // Dimmed off the selected row
         assert!((2..18).all(|x| buffer[(x, FIRST_ROW)].fg == Color::Reset));
         assert!((10..18).all(|x| buffer[(x, FIRST_ROW + 1)].fg == Color::DarkGray));
+    }
+
+    #[test]
+    fn draws_weight_bars_with_the_bar_of_the_config() {
+        let finder = test_util::weights_finder(&history::parse(RUNS.as_bytes()), "ls", false);
+        let buffer = Render::new(&finder).bar('#').run().buffer;
+
+        assert_eq!(
+            text(&buffer, FIRST_ROW).trim_end(),
+            format!("  {}  ls", "#".repeat(16))
+        );
+        assert_eq!(
+            text(&buffer, FIRST_ROW + 1).trim_end(),
+            format!("  {}{}  ls -la", " ".repeat(8), "#".repeat(8))
+        );
     }
 
     #[test]
@@ -1352,7 +1357,7 @@ mod tests {
         );
         let buffer = Render::new(&finder).no_times().run().buffer;
 
-        assert!(text(&buffer, FIRST_ROW).starts_with(&format!("  {}  ls", WEIGHT.repeat(16))));
+        assert!(text(&buffer, FIRST_ROW).starts_with(&format!("  {}  ls", bars(16))));
     }
 
     #[test]
@@ -1391,7 +1396,7 @@ mod tests {
             text(&buffer, FIRST_ROW),
             format!(
                 "{:<44}{}",
-                format!("  {}  ls", WEIGHT.repeat(16)),
+                format!("  {}  ls", bars(16)),
                 time_of(&finder, "ls")
             )
         );
@@ -1399,7 +1404,7 @@ mod tests {
             text(&buffer, FIRST_ROW + 1),
             format!(
                 "{:<44}{}",
-                format!("          {}  ls -la", WEIGHT.repeat(8)),
+                format!("          {}  ls -la", bars(8)),
                 time_of(&finder, "ls -la")
             )
         );
@@ -1414,7 +1419,7 @@ mod tests {
 
         assert_eq!(
             text(&buffer, FIRST_ROW).trim_end(),
-            format!("  {}  ls", WEIGHT.repeat(16))
+            format!("  {}  ls", bars(16))
         );
     }
 
@@ -1426,7 +1431,7 @@ mod tests {
 
         assert_eq!(
             text(&buffer, FIRST_ROW).trim_end(),
-            format!("  {}  ls", WEIGHT.repeat(16))
+            format!("  {}  ls", bars(16))
         );
     }
 
@@ -1450,7 +1455,7 @@ mod tests {
             text(&buffer, FIRST_ROW),
             format!(
                 "{:<59}mac  {}",
-                format!("  {}  ls", WEIGHT.repeat(16)),
+                format!("  {}  ls", bars(16)),
                 time_of(&finder, "ls")
             )
         );
@@ -1466,7 +1471,7 @@ mod tests {
             text(&buffer, FIRST_ROW),
             format!(
                 "{:<44}{}",
-                format!("  {}  ls", WEIGHT.repeat(16)),
+                format!("  {}  ls", bars(16)),
                 time_of(&finder, "ls")
             )
         );

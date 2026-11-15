@@ -84,11 +84,11 @@ short a character or has the last one changed has to be a whole word, so `giit` 
 but not `gist`. With prefix search, only the first word gets a typo. `typos = false` in the
 config or `--no-typos` turns them off, and `--typos` turns them on despite the config.
 
-The list starts with the most recent command, after its time and with how many times it ran. With
-`layout = "weights"` in the config or `--layout weights`, it starts with the command run the most
-lately. A bar of how much takes the place of the time, which moves to the right edge, after the
-hosts in backups. A pane too narrow for the command next to them leaves the hosts out first, then
-the time:
+Once a word is typed, the list starts with the command run the most lately. Without a query it
+starts with the most recent command, as in the shell's history, so Up and Enter on an empty line
+runs the last command again. Either way, a bar of how much comes before each command and its time is
+at the right edge, after the hosts in backups. A pane too narrow for the command next to them leaves
+the hosts out first, then the time:
 
 ```
 mon› ~/src/istoria› main› sbx
@@ -103,6 +103,20 @@ command run often but long ago sinks below one run a few times in the last few h
 The bars are on a log scale against the heaviest command in the history, matched or not, so they
 keep their length as the query changes. A prompt too wide for the bars leaves them out, and the
 number of runs shows instead.
+
+`bar` in the config sets a step of the bars, any character one column wide:
+
+```
+▪▪▪▪▪▪▪▪▪▪▪▪  bar = "▪"
+ᗧᗧᗧᗧᗧᗧᗧᗧᗧᗧᗧᗧ  bar = "ᗧ"
+████████████  bar = "█"
+••••••••••••  bar = "•"
+||||||||||||  bar = "|"
+############  bar = "#"
+```
+
+With `layout = "recent"` in the config or `--layout recent`, the list starts with the most recent
+command instead, after its time and with how many times it ran.
 
 In [backups](#backups) without times, `HISTTIMEFORMAT` unset, every run of a command is the same
 entry, stored once and before the entries with times. Each command then weighs about one old run,
@@ -186,7 +200,8 @@ with `--backup-id`. Any other key cancels. Ctrl-D in history leaves backups as t
 ```toml
 height  = 12        # rows of the pane, the terminal's at most
 list    = "below"   # or "above" the prompt line, like fzf
-layout  = "recent"  # or "weights": the most run lately first, times at the right
+layout  = "weights" # the most run lately first, or "recent": the latest first
+bar     = "▪"       # a step of the weight bars, one column: "ᗧ", "█", "•", "|", "#"
 border  = false     # a line on the far edge of the pane
 preview = false     # the selected command in full when its row is cut
 times   = true      # when each command ran, if the history has times

@@ -4,11 +4,7 @@ require_relative 'istoria_test_case'
 
 class IstoriaConfigTest < IstoriaTestCase
   def test_takes_colors_from_the_config
-    write_config(<<~TOML)
-      [colors]
-      match = "#ff8800"
-      selected = { bg = "21" }
-    TOML
+    write_config(colors: { match: '#ff8800', selected: { bg: '21' } })
     start('cd')
 
     assert_color '38;2;255;136;0'
@@ -17,7 +13,7 @@ class IstoriaConfigTest < IstoriaTestCase
   end
 
   def test_takes_the_pane_height_from_the_config
-    write_config("height = 6\n")
+    write_config(height: 6)
     start('')
 
     # The prompt line and the commands under the divider
@@ -25,7 +21,7 @@ class IstoriaConfigTest < IstoriaTestCase
   end
 
   def test_fits_a_pane_higher_than_the_terminal
-    write_config("height = 100\n")
+    write_config(height: 100)
     start('', rows: 8)
 
     assert_equal 7, pane.size
@@ -33,14 +29,14 @@ class IstoriaConfigTest < IstoriaTestCase
   end
 
   def test_falls_back_to_the_config_in_home
-    write_config(%([colors]\nselected = { bg = "21" }\n), home: File.join(@tmp_dir, '.config'))
+    write_config(colors: { selected: { bg: '21' } }, home: File.join(@tmp_dir, '.config'))
     start('cd', env: { 'XDG_CONFIG_HOME' => nil, 'HOME' => @tmp_dir })
 
     assert_color '48;5;21'
   end
 
   def test_fails_on_a_broken_config
-    write_config(%([colors]\nmatch = "yelow"\n))
+    write_config_text(%([colors]\nmatch = "yelow"\n))
     _, stderr, status = run_istoria('search', 'ls')
 
     assert_equal 2, status.exitstatus
@@ -60,7 +56,7 @@ class IstoriaConfigTest < IstoriaTestCase
   end
 
   def test_init_config_keeps_an_existing_config
-    write_config('broken')
+    write_config_text('broken')
     path = File.join(config_home, 'istoria', 'config.toml')
     stdout, stderr, status = run_istoria('init-config')
 
@@ -102,6 +98,7 @@ class IstoriaConfigTest < IstoriaTestCase
     run_istoria('init-config')
     start('cd')
 
-    assert_color '48;5;8'
+    assert_equal '› cd', pane.first
+    assert(pane.drop(1).any? { |row| row.end_with?('cd src/sndbx/') }, pane.join("\n"))
   end
 end

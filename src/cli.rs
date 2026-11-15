@@ -23,9 +23,11 @@ Options:
 
 search reads $HISTFILE. Each word of the query matches anywhere in a command, in
 any order, ignoring case. With search = \"prefix\" in the config or
---search prefix, the query matches the start of a command instead. With
-layout = \"weights\" or --layout weights, the commands run the most lately come
-first, with bars of how much, the times at the right edge.
+--search prefix, the query matches the start of a command instead. Once the
+query has a word, the commands run the most lately come first, and without one
+the most recent. Either way, bars of how much come first and the times at the
+right edge. With layout = \"recent\" or --layout recent, the most recent always
+come first, after their times.
 
 Search options:
   --print-query      on Esc, print the query and exit with 3

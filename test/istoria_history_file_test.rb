@@ -64,7 +64,8 @@ class IstoriaHistoryFileTest < IstoriaTestCase
 
     assert File.symlink?(link)
     refute_includes File.read(@history), 'tmux'
-    assert_equal %w[bash_history link], Dir.children(@tmp_dir).sort
+    # No temporary files left next to the history, the config is the test's own
+    assert_equal %w[bash_history link], Dir.children(@tmp_dir).sort - [File.basename(config_home)]
   end
 
   def test_falls_back_to_bash_history_in_home

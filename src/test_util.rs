@@ -6,9 +6,41 @@ use std::path::PathBuf;
 use std::process;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::config::{Layout, SearchMode};
+use ratatui::style::{Color, Style};
+
+use crate::config::{Config, Layout, ListPosition, SearchMode, Theme};
 use crate::finder::{Command, Finder};
 use crate::history::Entry;
+
+/// Every key set, so the tests don't change with the defaults
+pub fn config() -> Config {
+    Config {
+        height: 12,
+        list: ListPosition::Below,
+        layout: Layout::Recent,
+        bar: '▪',
+        border: false,
+        preview: false,
+        times: true,
+        search: SearchMode::Keyword,
+        typos: true,
+        colors: theme(),
+    }
+}
+
+/// Every color set, so the tests don't change with the defaults
+pub fn theme() -> Theme {
+    Theme {
+        prompt: Style::new().fg(Color::Blue).bold(),
+        backup: Style::new().fg(Color::Yellow),
+        count: Style::new().fg(Color::DarkGray),
+        deleted: Style::new().fg(Color::Green),
+        error: Style::new().fg(Color::Red),
+        matched: Style::new().fg(Color::Yellow).bold(),
+        dim: Style::new().fg(Color::DarkGray),
+        selected: Style::new().bg(Color::DarkGray),
+    }
+}
 
 /// Searching words without typos, most recent first, the matching most tests are not about
 pub fn finder(entries: &[Entry], query: &str) -> Finder {

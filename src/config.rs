@@ -10,13 +10,15 @@ use std::str::FromStr;
 use ratatui::style::{Color, Modifier, Style};
 use serde::Deserialize;
 use serde::de::{self, Deserializer, MapAccess, Visitor};
+use unicode_width::UnicodeWidthChar;
 
 use crate::context::Context;
 
 /// The defaults as a config file, for --help and --init-config
-pub const DEFAULT: &str = r#"height  = 12        # rows of the pane, the terminal's at most
+pub const DEFAULT: &str = r##"height  = 12        # rows of the pane, the terminal's at most
 list    = "below"   # or "above" the prompt line, like fzf
-layout  = "recent"  # or "weights": the most run lately first, times at the right
+layout  = "weights" # the most run lately first, or "recent": the latest first
+bar     = "▪"       # a step of the weight bars, one column: "ᗧ", "█", "•", "|", "#"
 border  = false     # a line on the far edge of the pane
 preview = false     # the selected command in full when its row is cut
 times   = true      # when each command ran, if the history has times
@@ -31,9 +33,10 @@ error    = "red"                 # Ctrl-D asking or failed, the count of no matc
 match    = { fg = "yellow", bold = true }
 dim      = "dark-gray"           # times, bars, run counts, hosts, cuts, dividers, border
 selected = { bg = "dark-gray" }  # the selected row, under the match
-"#;
+"##;
 
 const DEFAULT_HEIGHT: u16 = 12;
+const DEFAULT_BAR: char = '▪';
 /// The prompt line, the divider and a row of the list
 const MIN_HEIGHT: u16 = 3;
 
@@ -45,6 +48,9 @@ pub struct Config {
     pub height: u16,
     pub list: ListPosition,
     pub layout: Layout,
+    /// A step of the weight bars, one column wide
+    #[serde(deserialize_with = "bar")]
+    pub bar: char,
     /// A line on the pane's edge away from the prompt line
     pub border: bool,
     /// The selected command in full when its row is cut
@@ -71,9 +77,9 @@ pub enum ListPosition {
 #[serde(rename_all = "lowercase")]
 pub enum Layout {
     /// Times, the most recent first
-    #[default]
     Recent,
     /// Bars of how much each command ran lately, the most first
+    #[default]
     Weights,
 }
 
@@ -108,6 +114,7 @@ impl Default for Config {
             height: DEFAULT_HEIGHT,
             list: ListPosition::default(),
             layout: Layout::default(),
+            bar: DEFAULT_BAR,
             border: false,
             preview: false,
             times: true,
@@ -226,6 +233,20 @@ fn height<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u16, D::Error> {
     Ok(height)
 }
 
+/// One character one column wide, so the bars fit the column of the times
+fn bar<'de, D: Deserializer<'de>>(deserializer: D) -> Result<char, D::Error> {
+    let text = String::deserialize(deserializer)?;
+    let mut chars = text.chars();
+
+    match (chars.next(), chars.next()) {
+        (Some(bar), None) if bar.width() == Some(1) => Ok(bar),
+        _ => Err(de::Error::custom(format!(
+            "bar must be one character one column wide, not \"{}\"",
+            text.escape_default()
+        ))),
+    }
+}
+
 /// A style is a table of colors and modifiers, or just a color for the foreground
 fn style<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Style, D::Error> {
     struct StyleVisitor;
@@ -318,6 +339,7 @@ mod tests {
         assert_eq!(config.height, Config::default().height);
         assert_eq!(config.list, Config::default().list);
         assert_eq!(config.layout, Config::default().layout);
+        assert_eq!(config.bar, Config::default().bar);
         assert_eq!(config.border, Config::default().border);
         assert_eq!(config.preview, Config::default().preview);
         assert_eq!(config.times, Config::default().times);
@@ -328,14 +350,14 @@ mod tests {
 
     #[test]
     fn reads_the_height() {
-        assert_eq!(Config::parse("").unwrap().height, DEFAULT_HEIGHT);
+        assert_eq!(Config::parse("").unwrap().height, Config::default().height);
         assert_eq!(Config::parse("height = 20\n").unwrap().height, 20);
         assert_eq!(Config::parse("height = 3\n").unwrap().height, 3);
     }
 
     #[test]
     fn reads_where_the_list_goes() {
-        assert_eq!(Config::parse("").unwrap().list, ListPosition::Below);
+        assert_eq!(Config::parse("").unwrap().list, Config::default().list);
         assert_eq!(
             Config::parse("list = \"below\"\n").unwrap().list,
             ListPosition::Below
@@ -348,7 +370,7 @@ mod tests {
 
     #[test]
     fn reads_the_layout() {
-        assert_eq!(Config::parse("").unwrap().layout, Layout::Recent);
+        assert_eq!(Config::parse("").unwrap().layout, Config::default().layout);
         assert_eq!(
             Config::parse("layout = \"recent\"\n").unwrap().layout,
             Layout::Recent
@@ -369,36 +391,62 @@ mod tests {
     }
 
     #[test]
+    fn reads_the_bar() {
+        assert_eq!(Config::parse("").unwrap().bar, Config::default().bar);
+        assert_eq!(Config::parse("bar = \"▪\"\n").unwrap().bar, '▪');
+        assert_eq!(Config::parse("bar = \"█\"\n").unwrap().bar, '█');
+        assert_eq!(Config::parse("bar = \"#\"\n").unwrap().bar, '#');
+    }
+
+    #[test]
+    fn rejects_bars_other_than_one_column_wide() {
+        let expected = |text| format!("bar must be one character one column wide, not \"{text}\"");
+
+        assert!(error("bar = \"\"\n").contains(&expected("")));
+        assert!(error("bar = \"##\"\n").contains(&expected("##")));
+        assert!(error("bar = \"🟩\"\n").contains(&expected("\\u{1f7e9}")));
+        assert!(error("bar = \"\\t\"\n").contains(&expected("\\t")));
+        assert!(error("bar = 1\n").contains("expected a string"));
+    }
+
+    #[test]
     fn reads_the_border() {
-        assert!(!Config::parse("").unwrap().border);
+        assert_eq!(Config::parse("").unwrap().border, Config::default().border);
         assert!(Config::parse("border = true\n").unwrap().border);
+        assert!(!Config::parse("border = false\n").unwrap().border);
         assert!(error("border = \"yes\"\n").contains("expected a boolean"));
     }
 
     #[test]
     fn reads_the_preview() {
-        assert!(!Config::parse("").unwrap().preview);
+        assert_eq!(
+            Config::parse("").unwrap().preview,
+            Config::default().preview
+        );
         assert!(Config::parse("preview = true\n").unwrap().preview);
+        assert!(!Config::parse("preview = false\n").unwrap().preview);
         assert!(error("preview = \"yes\"\n").contains("expected a boolean"));
     }
 
     #[test]
     fn reads_the_times() {
-        assert!(Config::parse("").unwrap().times);
+        assert_eq!(Config::parse("").unwrap().times, Config::default().times);
+        assert!(Config::parse("times = true\n").unwrap().times);
         assert!(!Config::parse("times = false\n").unwrap().times);
         assert!(error("times = \"no\"\n").contains("expected a boolean"));
     }
 
     #[test]
     fn reads_the_typos() {
-        assert!(Config::parse("").unwrap().typos);
+        assert_eq!(Config::parse("").unwrap().typos, Config::default().typos);
+        assert!(Config::parse("typos = true\n").unwrap().typos);
         assert!(!Config::parse("typos = false\n").unwrap().typos);
         assert!(error("typos = \"no\"\n").contains("expected a boolean"));
     }
 
     #[test]
     fn reads_the_search_mode() {
-        assert_eq!(Config::parse("").unwrap().search, SearchMode::Keyword);
+        assert_eq!(Config::parse("").unwrap().search, Config::default().search);
         assert_eq!(
             Config::parse("search = \"keyword\"\n").unwrap().search,
             SearchMode::Keyword

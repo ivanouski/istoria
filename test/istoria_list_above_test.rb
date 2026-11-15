@@ -5,7 +5,7 @@ require_relative 'istoria_test_case'
 class IstoriaListAboveTest < IstoriaTestCase
   def setup
     super
-    write_config(%(list = "above"\n))
+    write_config(list: 'above')
   end
 
   def test_lists_the_commands_up_from_the_prompt_line_on_the_last_row
@@ -46,7 +46,7 @@ class IstoriaListAboveTest < IstoriaTestCase
 
   def test_up_in_bash_opens_istoria_and_goes_back_in_history
     File.write(@history, "echo first\necho picked\nls\n")
-    write_config(%(list = "above"\n), home: File.join(@tmp_dir, '.config'))
+    write_config(list: 'above', home: File.join(@tmp_dir, '.config'))
     start_bash
 
     @session.press(:up)

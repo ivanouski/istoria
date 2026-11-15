@@ -32,6 +32,17 @@ class IstoriaTestCase < Minitest::Test
     'gg',
   ].map { |line| "#{line}\n" }.join.freeze
 
+  # Every key and color set, so the tests don't change with the defaults. write_config sets others
+  # over them.
+  TEST_CONFIG = {
+    height: 12, list: 'below', layout: 'recent', bar: '▪', border: false, preview: false, times: true,
+    search: 'keyword', typos: true,
+  }.freeze
+  TEST_COLORS = {
+    prompt: { fg: 'blue', bold: true }, backup: 'yellow', count: 'dark-gray', deleted: 'green', error: 'red',
+    match: { fg: 'yellow', bold: true }, dim: 'dark-gray', selected: { bg: 'dark-gray' },
+  }.freeze
+
   system('cargo', 'build', '--quiet', '--manifest-path', File.join(CRATE, 'Cargo.toml')) || abort('cargo build failed')
 
   def setup
@@ -52,6 +63,7 @@ class IstoriaTestCase < Minitest::Test
   private
 
   def start(*query, command: [ISTORIA, 'search', *query], history: @history, env: {}, **terminal)
+    ensure_config
     env = istoria_env(HISTFILE: history).merge(env)
     @session = TerminalSession.new(command, env:, **terminal)
     wait_for_pane
@@ -70,6 +82,7 @@ class IstoriaTestCase < Minitest::Test
       PROMPT_COMMAND='history -a; history -c; history -r'
       . #{ISTORIARC}
     BASH
+    ensure_config(File.join(@tmp_dir, '.config'))
     env = {
       'PATH' => "#{path}:#{ENV.fetch('PATH')}", 'HOME' => @tmp_dir, 'XDG_CONFIG_HOME' => nil, 'XDG_DATA_HOME' => nil,
       'INPUTRC' => File::NULL,
@@ -201,8 +214,36 @@ class IstoriaTestCase < Minitest::Test
     File.join(@tmp_dir, 'data')
   end
 
-  def write_config(text, home: config_home)
+  # The test config with keys and colors set over it
+  def write_config(home: config_home, colors: {}, **keys)
+    lines = TEST_CONFIG.merge(keys).map { |key, value| "#{key} = #{toml(value)}" }
+    lines << '[colors]'
+    lines.concat(TEST_COLORS.merge(colors).map { |key, value| "#{key} = #{toml(value)}" })
+    write_config_text("#{lines.join("\n")}\n", home:)
+  end
+
+  # A config as it is, broken ones too
+  def write_config_text(text, home: config_home)
     FileUtils.mkdir_p(File.join(home, 'istoria'))
-    File.write(File.join(home, 'istoria', 'config.toml'), text)
+    File.write(config_path(home), text)
+  end
+
+  def config_path(home = config_home)
+    File.join(home, 'istoria', 'config.toml')
+  end
+
+  # The test config, unless the test wrote its own
+  def ensure_config(home = config_home)
+    write_config(home:) unless File.exist?(config_path(home))
+  end
+
+  # Strings, numbers, booleans and inline tables of them. Quotes, backslashes and control characters
+  # in strings go as \uXXXX escapes.
+  def toml(value)
+    case value
+    when String then %("#{value.gsub(/["\\\x00-\x1f\x7f]/) { |char| format('\\u%04X', char.ord) }}")
+    when Hash then "{ #{value.map { |key, inner| "#{key} = #{toml(inner)}" }.join(', ')} }"
+    else value.to_s
+    end
   end
 end
