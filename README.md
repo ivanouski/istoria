@@ -4,6 +4,8 @@ A finder for bash history that matches words in any order and forgives typos. Pi
 run it or put it on the prompt line, delete it from the history, or find it in backups that outlive
 the history.
 
+<img src="assets/demo.gif" width="900" alt="istoria finding git push from gti psu, sbx run claude from sbz r cla and docker compose up -d from dokcer comp">
+
 ## Install
 
 With [Homebrew](https://brew.sh), on macOS or Linux, which installs the completion too:
