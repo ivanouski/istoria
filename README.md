@@ -68,27 +68,22 @@ HISTFILESIZE=10000
 
 ## Usage
 
-Up or Down opens istoria with the typed text as the query, searching as the [config](#config) says.
-Alt-Up or Alt-Down (Option on a Mac) opens it in the [backups](#backups), most recent first
-whatever the layout. Ctrl-P and Ctrl-N still step through the shell's history.
+Up or Down opens istoria with the typed text as the query. Alt-Up or Alt-Down (Option on a Mac)
+opens it in the [backups](#backups), most recent first. Ctrl-P and Ctrl-N still step through the
+shell's history.
 
 Each word matches anywhere in a command, in any order, ignoring case: `push git` finds
 `git -C api push`. With `search = "prefix"` in the [config](#config) or `--search prefix`, the query
-matches the start of a command instead: `git` finds `git push` but not `sudo git push`. A space
-after the query ends a word there, so `ls ` finds `ls` and `ls -la` but not `lsof`.
+matches the start of a command instead. A space after the query ends a word there, so `ls ` finds
+`ls` and `ls -la` but not `lsof`.
 
-A word of 3 or more characters also matches the start of a word in a command with one typo: a
-character missing, extra, changed, or swapped with the next one. `gti` finds `git push` and `dokcer
-comp` finds `docker compose up`, listed after the commands that match without typos. A match that is
-short a character or has the last one changed has to be a whole word, so `giit` and `gix` find `git`
-but not `gist`. With prefix search, only the first word gets a typo. `typos = false` in the
-config or `--no-typos` turns them off, and `--typos` turns them on despite the config.
+A word of 3 or more characters also matches with one typo, listed after the exact matches: `gti`
+finds `git push` and `dokcer comp` finds `docker compose up`. `typos = false` in the config or
+`--no-typos` turns this off.
 
-Once a word is typed, the list starts with the command run the most lately. Without a query it
-starts with the most recent command, as in the shell's history, so Up and Enter on an empty line
-runs the last command again. Either way, a bar of how much comes before each command and its time is
-at the right edge, after the hosts in backups. A pane too narrow for the command next to them leaves
-the hosts out first, then the time:
+Once a word is typed, the list starts with the commands run the most lately, each after a bar of how
+much. Without a query it starts with the most recent command, so Up and Enter on an empty line runs
+the last command again. `layout = "recent"` or `--layout recent` always puts the most recent first.
 
 ```
 mon› ~/src/istoria› main› sbx
@@ -97,30 +92,6 @@ mon› ~/src/istoria› main› sbx
                  ▪▪▪▪▪▪▪  sbx logs commands -p -n 100           2026-11-12 15:39
                   ▪▪▪▪▪▪  sbx run claude -v ../homebrew-tap/ …  2026-11-14 10:42
 ```
-
-Each run of a command adds to its weight, a run 1000 commands back half as much as the last one. A
-command run often but long ago sinks below one run a few times in the last few hundred commands.
-The bars are on a log scale against the heaviest command in the history, matched or not, so they
-keep their length as the query changes. A prompt too wide for the bars leaves them out, and the
-number of runs shows instead.
-
-`bar` in the config sets a step of the bars, any character one column wide:
-
-```
-▪▪▪▪▪▪▪▪▪▪▪▪  bar = "▪"
-ᗧᗧᗧᗧᗧᗧᗧᗧᗧᗧᗧᗧ  bar = "ᗧ"
-████████████  bar = "█"
-••••••••••••  bar = "•"
-||||||||||||  bar = "|"
-############  bar = "#"
-```
-
-With `layout = "recent"` in the config or `--layout recent`, the list starts with the most recent
-command instead, after its time and with how many times it ran.
-
-In [backups](#backups) without times, `HISTTIMEFORMAT` unset, every run of a command is the same
-entry, stored once and before the entries with times. Each command then weighs about one old run,
-which is why Alt-Up and Alt-Down search the backups with `--layout recent`.
 
 | Key                           | Action                                   |
 | ----------------------------- | ---------------------------------------- |
@@ -138,20 +109,11 @@ which is why Alt-Up and Alt-Down search the backups with `--layout recent`.
 | Esc                           | quit, keeping the query                  |
 | Ctrl-C                        | quit, leaving the prompt line as it was  |
 
-Pasted text goes in the query at the cursor, on one line: line breaks and tabs become spaces, so a
-paste doesn't run a command. Whitespace at the end of a paste is dropped at the end of the query,
-where a space would end the word. Opened with Up or Down, a paste is safe with
-bracketed paste in readline: on by default from bash 5.1, and from 4.4 with
-`set enable-bracketed-paste on` in `~/.inputrc`. Without it, as before bash 4.4, a pasted line break
-works like Enter.
+Pasted text goes in the query on one line, so a paste doesn't run a command, given bracketed paste
+in readline (on by default from bash 5.1).
 
-With bash 4.4 or later istoria shows your prompt in place of `›`, unless it takes more than 60% of
-the width. That runs any `$(...)` in `PS1` each time istoria opens, so `ISTORIA_SHELL_PROMPT=false`
-keeps `›`. `ISTORIA_PROMPT`, written like `PS1`, shows in place of either:
-
-```bash
-ISTORIA_PROMPT='\[\e[35m\]hist›\[\e[0m\] '
-```
+With bash 4.4 or later istoria shows your prompt in place of `›`, running any `$(...)` in `PS1`.
+`ISTORIA_SHELL_PROMPT=false` keeps `›`, and `ISTORIA_PROMPT`, written like `PS1`, replaces either.
 
 Run directly, `istoria search` prints the picked command instead of running it.
 `istoria delete-last [N]` deletes the last N commands from history, 1 by default, and prints them.
@@ -161,8 +123,7 @@ Run directly, `istoria search` prints the picked command instead of running it.
 
 `istoria backup` saves the history to `~/.local/share/istoria/history.db` (or under
 `$XDG_DATA_HOME`), where it outlives deleting and `HISTFILESIZE`. Each entry, a command and when it
-ran, is stored once, and each backup keeps which ones it saw. A backup's label is when it started,
-in local time:
+ran, is stored once, and each backup keeps which ones it saw:
 
 ```console
 $ istoria backup
@@ -173,24 +134,19 @@ $ istoria backup list
 $ istoria backup delete 20261029-090000
 ```
 
-A backup's host is this one's name up to the first dot. `--host NAME` saves it from another host,
-like the history of another laptop copied over, and is cut at the first dot the same way. Names
-take letters, digits, `-`, `_` and dots; when this host's name has anything else, give one with
-`--host`:
+`--host NAME` saves a backup from another host, like the history of another laptop copied over:
 
 ```console
 $ HISTFILE=~/air_history istoria backup --host air
 20261030-150012  3120 entries, 912 new
 ```
 
-`istoria search --backup` searches every backup, `--backup-id LABEL` one of them, with `backup›` or
-`backup:LABEL›` after the prompt. Each command shows the hosts it was backed up from at the right
-edge, unless the pane is too narrow. Alt-Up and Alt-Down open `--backup`, see [Usage](#usage).
-Commands the shell hasn't saved yet aren't
-backed up, see [Bash history](#bash-history).
+`istoria search --backup` searches every backup, `--backup-id LABEL` one of them, showing the hosts
+each command was backed up from. Commands the shell hasn't saved yet aren't backed up, see
+[Bash history](#bash-history).
 
 Ctrl-D in backups asks first, and `y` deletes the command from every backup, or only from `LABEL`
-with `--backup-id`. Any other key cancels. Ctrl-D in history leaves backups as they are.
+with `--backup-id`. Ctrl-D in history leaves backups as they are.
 
 ## Config
 
@@ -201,7 +157,7 @@ with `--backup-id`. Any other key cancels. Ctrl-D in history leaves backups as t
 height  = 12        # rows of the pane, the terminal's at most
 list    = "below"   # or "above" the prompt line, like fzf
 layout  = "weights" # the most run lately first, or "recent": the latest first
-bar     = "▪"       # a step of the weight bars, one column: "ᗧ", "█", "•", "|", "#"
+bar     = "▪"       # a step of the weight bars, one column: "❯", "█", "•", "|", "#"
 border  = false     # a line on the far edge of the pane
 preview = false     # the selected command in full when its row is cut
 times   = true      # when each command ran, if the history has times
@@ -217,11 +173,6 @@ match    = { fg = "yellow", bold = true }
 dim      = "dark-gray"           # times, bars, run counts, hosts, cuts, dividers, border
 selected = { bg = "dark-gray" }  # the selected row, under the match
 ```
-
-`height` counts the prompt line and the divider, so it is at least 3. With `list = "above"` the
-most recent commands are right over the prompt line, and Up keeps going back in history. `border`
-and `preview` take rows from the list, and are left out when it would get too short. The preview
-shows up to 3 lines.
 
 A color is a name (`yellow`, `light-blue`), `0` to `255`, `#rrggbb`, or a table of `fg`, `bg`,
 `bold`, `italic`, `underlined` and `reversed`.
