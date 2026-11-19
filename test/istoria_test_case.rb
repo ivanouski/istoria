@@ -35,8 +35,8 @@ class IstoriaTestCase < Minitest::Test
   # Every key and color set, so the tests don't change with the defaults. write_config sets others
   # over them.
   TEST_CONFIG = {
-    height: 12, list: 'below', layout: 'recent', bar: '▪', border: false, head: 10, preview: false,
-    times: true, search: 'keyword', typos: true,
+    height: 12, list: 'below', layout: 'recent', bar: '▪', border: false, head: 10, gap: '⋯',
+    preview: false, times: true, search: 'keyword', typos: true,
   }.freeze
   TEST_COLORS = {
     prompt: { fg: 'blue', bold: true }, backup: 'yellow', count: 'dark-gray', deleted: 'green', error: 'red',

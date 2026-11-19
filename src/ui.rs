@@ -1,5 +1,6 @@
 //! Drawing the finder: the prompt line, the divider, the list and the preview
 
+use std::borrow::Cow;
 use std::iter;
 use std::ops::Range;
 
@@ -367,6 +368,8 @@ struct RowLayout {
     bar: char,
     /// Most columns of a command's start kept before a cut
     head: usize,
+    /// Between that start and the rest
+    gap: char,
     pane_width: usize,
 }
 
@@ -411,6 +414,7 @@ impl RowLayout {
             edge_time,
             bar: config.bar,
             head: config.head,
+            gap: config.gap,
             pane_width,
         }
     }
@@ -432,6 +436,7 @@ impl RowLayout {
             ranges,
             self.command_width.saturating_sub(runs_width),
             self.head,
+            self.gap,
         )
     }
 }
@@ -499,7 +504,7 @@ fn row<'a>(
     }
 
     if fitted.cut_start {
-        spans.push(Span::styled(ELLIPSIS, dim));
+        spans.push(Span::styled(fitted.start_mark(layout.gap), dim));
     }
 
     spans.extend(highlight(
@@ -653,11 +658,11 @@ fn around(ranges: &[Range<usize>], from: usize) -> Range<usize> {
     }
 }
 
-/// The part of a command shown in a row, after the end of its start kept, and whether an ellipsis
-/// goes before or after it
+/// The part of a command shown in a row, after the end of its start kept, and whether it is cut
+/// before or after it
 #[derive(Clone, Debug, PartialEq)]
 struct Fitted {
-    /// 0 without the start kept, else an ellipsis follows it
+    /// 0 without the start kept, else the gap follows it
     head_end: usize,
     shown: Range<usize>,
     cut_start: bool,
@@ -684,7 +689,7 @@ impl Fitted {
         }
     }
 
-    /// Shown after an ellipsis, and after the kept start when there is one
+    /// Shown after the kept start and the gap when there is one, else after an ellipsis
     fn cut(head_end: usize, shown: Range<usize>, cut_end: bool) -> Self {
         Self {
             head_end,
@@ -697,12 +702,27 @@ impl Fitted {
     fn is_cut(&self) -> bool {
         self.cut_start || self.cut_end
     }
+
+    /// What goes before the shown part when it is cut from the start
+    fn start_mark(&self, gap: char) -> Cow<'static, str> {
+        start_mark(self.head_end, gap)
+    }
+}
+
+/// What goes before the shown part of a command cut from the start: after a kept start, the gap
+/// between spaces, else the ellipsis
+fn start_mark(head_end: usize, gap: char) -> Cow<'static, str> {
+    if head_end > 0 {
+        Cow::Owned(format!(" {gap} "))
+    } else {
+        Cow::Borrowed(ELLIPSIS)
+    }
 }
 
 /// Fits text into width columns, keeping the matches in view: the start, else the start up to head
 /// columns and the end, else that start and the matches a third of the way into the rest. The start
 /// isn't kept when it would leave out matches shown without it.
-fn fit(text: &str, ranges: &[Range<usize>], width: usize, head: usize) -> Fitted {
+fn fit(text: &str, ranges: &[Range<usize>], width: usize, head: usize, gap: char) -> Fitted {
     if text.width() <= width {
         return Fitted::whole(text);
     }
@@ -714,15 +734,15 @@ fn fit(text: &str, ranges: &[Range<usize>], width: usize, head: usize) -> Fitted
         return start_cut;
     }
 
-    let without_head = fit_rest(text, &range, width, 0).unwrap_or_else(|| start_cut.clone());
-    let Some(head_end) = kept_head(text, head, width) else {
+    let without_head = fit_rest(text, &range, width, 0, gap).unwrap_or_else(|| start_cut.clone());
+    let Some(head_end) = kept_head(text, head, gap, width) else {
         return without_head;
     };
     // Matches starting in the kept start show there
     let range_after = around(ranges, head_end);
     let with_head = Some(&range_after)
         .filter(|range| !range.is_empty())
-        .and_then(|range| fit_rest(text, range, width, head_end))
+        .and_then(|range| fit_rest(text, range, width, head_end, gap))
         .unwrap_or(start_cut);
 
     if shows(&without_head, &range) && !shows(&with_head, &range_after) {
@@ -734,26 +754,47 @@ fn fit(text: &str, ranges: &[Range<usize>], width: usize, head: usize) -> Fitted
 
 /// Fits the text past its kept start, cut from it, keeping range in view: the end, else range a third
 /// of the way in. None when only spaces would be left out before range.
-fn fit_rest(text: &str, range: &Range<usize>, width: usize, head_end: usize) -> Option<Fitted> {
-    let room = width.saturating_sub(text[..head_end].width());
-    let end_start = suffix_start(text, room.saturating_sub(1));
-
-    if end_start <= range.start {
-        return Some(Fitted::cut(head_end, end_start..text.len(), false));
-    }
-
-    let room = room.saturating_sub(2);
-    let start = suffix_start(&text[..range.start], room / 3);
+fn fit_rest(
+    text: &str,
+    range: &Range<usize>,
+    width: usize,
+    head_end: usize,
+    gap: char,
+) -> Option<Fitted> {
+    let room = width.saturating_sub(text[..head_end].width() + start_mark(head_end, gap).width());
+    let end_start = suffix_start(text, room);
+    let cut_end = end_start > range.start;
+    let start = if cut_end {
+        suffix_start(
+            &text[..range.start],
+            room.saturating_sub(ELLIPSIS.width()) / 3,
+        )
+    } else {
+        end_start
+    };
 
     if text[head_end..start].trim().is_empty() {
         return None;
     }
 
-    Some(Fitted::cut(
-        head_end,
-        start..prefix_end(text, start, room),
-        true,
-    ))
+    let start = after_spaces(text, start, head_end).min(range.start);
+
+    if cut_end {
+        let end = prefix_end(text, start, room.saturating_sub(ELLIPSIS.width()));
+
+        Some(Fitted::cut(head_end, start..end, true))
+    } else {
+        Some(Fitted::cut(head_end, start..text.len(), false))
+    }
+}
+
+/// Past the spaces at start when the gap, which has its own, goes before it
+fn after_spaces(text: &str, start: usize, head_end: usize) -> usize {
+    if head_end == 0 {
+        return start;
+    }
+
+    text.len() - text[start..].trim_start().len()
 }
 
 /// Whether all of range is in the shown part
@@ -762,8 +803,9 @@ fn shows(fitted: &Fitted, range: &Range<usize>) -> bool {
 }
 
 /// Where the start of text kept before a cut ends, unless it leaves the rest too narrow
-fn kept_head(text: &str, head: usize, width: usize) -> Option<usize> {
-    head_end(text, head).filter(|&end| width >= text[..end].width() + 1 + MIN_REST_WIDTH)
+fn kept_head(text: &str, head: usize, gap: char, width: usize) -> Option<usize> {
+    head_end(text, head)
+        .filter(|&end| width >= text[..end].width() + start_mark(end, gap).width() + MIN_REST_WIDTH)
 }
 
 /// Where the start of text kept before a cut ends: its words within width columns, else its first
@@ -955,6 +997,11 @@ mod tests {
 
         fn bar(mut self, bar: char) -> Self {
             self.config.bar = bar;
+            self
+        }
+
+        fn gap(mut self, gap: char) -> Self {
+            self.config.gap = gap;
             self
         }
 
@@ -1644,8 +1691,15 @@ mod tests {
         echo one two three four five six seven eight nine; ls\n\
         echo one two three four five six seven eight nine; ls\n";
 
+    /// The gap of the test config
+    const GAP: char = '⋯';
+
     fn shown(text: &str, fitted: &Fitted) -> String {
-        let start = if fitted.cut_start { ELLIPSIS } else { "" };
+        let start = if fitted.cut_start {
+            fitted.start_mark(GAP)
+        } else {
+            Cow::Borrowed("")
+        };
         let end = if fitted.cut_end { ELLIPSIS } else { "" };
 
         format!(
@@ -1657,7 +1711,7 @@ mod tests {
 
     /// Without keeping the start
     fn fit_one(text: &str, range: Range<usize>, width: usize) -> Fitted {
-        fit(text, &[range], width, 0)
+        fit(text, &[range], width, 0, GAP)
     }
 
     #[test]
@@ -1714,8 +1768,8 @@ mod tests {
         let range = KUBECTL.find("notify").unwrap()..KUBECTL.len();
 
         assert_eq!(
-            shown(KUBECTL, &fit(KUBECTL, &[range], 40, 16)),
-            "kubectl apply -f…1 && ./deploy.sh notify"
+            shown(KUBECTL, &fit(KUBECTL, &[range], 40, 16, GAP)),
+            "kubectl apply -f ⋯ && ./deploy.sh notify"
         );
     }
 
@@ -1724,8 +1778,8 @@ mod tests {
         let range = KUBECTL.find("prod-eu").unwrap()..KUBECTL.find("-west").unwrap();
 
         assert_eq!(
-            shown(KUBECTL, &fit(KUBECTL, &[range], 40, 10)),
-            "kubectl…--context=prod-eu-west-1 && ./d…"
+            shown(KUBECTL, &fit(KUBECTL, &[range], 40, 10, GAP)),
+            "kubectl ⋯ -context=prod-eu-west-1 && ./…"
         );
     }
 
@@ -1735,8 +1789,8 @@ mod tests {
         let range = text.find("address").unwrap()..text.len();
 
         assert_eq!(
-            shown(text, &fit(text, &[range], 40, 10)),
-            "./node_mod…/components/forms/address.tsx"
+            shown(text, &fit(text, &[range], 40, 10, GAP)),
+            "./node_mod ⋯ omponents/forms/address.tsx"
         );
     }
 
@@ -1746,15 +1800,15 @@ mod tests {
         let ranges = slice::from_ref(&range);
 
         assert_eq!(
-            shown(KUBECTL, &fit(KUBECTL, ranges, 27, 10)),
-            "…st-1 && ./deploy.sh notify"
+            shown(KUBECTL, &fit(KUBECTL, ranges, 29, 10, GAP)),
+            "…west-1 && ./deploy.sh notify"
         );
         assert_eq!(
-            shown(KUBECTL, &fit(KUBECTL, ranges, 28, 10)),
-            "kubectl…& ./deploy.sh notify"
+            shown(KUBECTL, &fit(KUBECTL, ranges, 30, 10, GAP)),
+            "kubectl ⋯ & ./deploy.sh notify"
         );
         assert_eq!(
-            shown(KUBECTL, &fit(KUBECTL, ranges, 40, 0)),
+            shown(KUBECTL, &fit(KUBECTL, ranges, 40, 0, GAP)),
             "…xt=prod-eu-west-1 && ./deploy.sh notify"
         );
     }
@@ -1762,12 +1816,12 @@ mod tests {
     #[test]
     fn fits_matches_in_the_start_and_past_it() {
         let ranges = [0..7, KUBECTL.find("notify").unwrap()..KUBECTL.len()];
-        let fitted = fit(KUBECTL, &ranges, 40, 10);
+        let fitted = fit(KUBECTL, &ranges, 40, 10, GAP);
 
         assert_eq!(fitted.head_end, 7);
         assert_eq!(
             shown(KUBECTL, &fitted),
-            "kubectl…-eu-west-1 && ./deploy.sh notify"
+            "kubectl ⋯ u-west-1 && ./deploy.sh notify"
         );
     }
 
@@ -1779,7 +1833,7 @@ mod tests {
         ];
 
         assert_eq!(
-            shown(KUBECTL, &fit(KUBECTL, &ranges, 35, 10)),
+            shown(KUBECTL, &fit(KUBECTL, &ranges, 35, 10, GAP)),
             "…od-eu-west-1 && ./deploy.sh notify"
         );
     }
@@ -1793,8 +1847,8 @@ mod tests {
         ];
 
         assert_eq!(
-            shown(text, &fit(text, &ranges, 40, 10)),
-            "./node_mod…/components/forms/address.tsx"
+            shown(text, &fit(text, &ranges, 40, 10, GAP)),
+            "./node_mod ⋯ omponents/forms/address.tsx"
         );
     }
 
@@ -1808,7 +1862,7 @@ mod tests {
         ];
 
         assert_eq!(
-            shown(text, &fit(text, &ranges, 40, 10)),
+            shown(text, &fit(text, &ranges, 40, 10, GAP)),
             "kubectl        apply -f k8s/prod/ --con…"
         );
     }
@@ -1824,13 +1878,45 @@ mod tests {
     }
 
     #[test]
+    fn fills_the_row_when_the_rest_starts_after_spaces() {
+        let text =
+            "kubectl  apply  -f  k8s/prod/  --context=prod-eu-west-1  &&  ./deploy.sh  notify";
+
+        for start in (0..text.len()).filter(|&start| text.as_bytes()[start] != b' ') {
+            for width in 30..text.len() {
+                let range = start..start + 1;
+                let fitted = fit(text, slice::from_ref(&range), width, 10, GAP);
+                let row = shown(text, &fitted);
+
+                if fitted.cut_end {
+                    assert_eq!(row.width(), width, "{start} {width} {row}");
+                }
+                if fitted.head_end > 0 {
+                    assert!(!row.contains(&format!("{GAP}  ")), "{start} {width} {row}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn keeps_no_start_when_only_spaces_follow_it_before_the_end() {
+        let text = format!("make{}deploy-production-eu-west", " ".repeat(30));
+        let range = text.len() - 4..text.len();
+
+        assert_eq!(
+            shown(&text, &fit(&text, &[range], 40, 10, GAP)),
+            format!("…{}deploy-production-eu-west", " ".repeat(14))
+        );
+    }
+
+    #[test]
     fn keeps_the_start_of_wide_characters_within_its_columns() {
         let text = "日本語 のテキスト 0123456789abcdefghijklmnopqrstuvwxyz";
         let range = text.len() - 1..text.len();
 
         for width in 3..50 {
             for head in 0..12 {
-                let fitted = fit(text, slice::from_ref(&range), width, head);
+                let fitted = fit(text, slice::from_ref(&range), width, head, GAP);
 
                 assert!(shown(text, &fitted).width() <= width, "{width} {head}");
                 assert!(text[..fitted.head_end].width() <= head, "{width} {head}");
@@ -1904,11 +1990,21 @@ mod tests {
     }
 
     #[test]
+    fn draws_the_gap_of_a_long_row_with_the_gap_of_the_config() {
+        let buffer = Render::new(&finder(LONG)).gap('┆').run().buffer;
+
+        assert_eq!(
+            text(&buffer, FIRST_ROW),
+            "  echo one ┆ ix seven eight nine; ls (2)"
+        );
+    }
+
+    #[test]
     fn shows_the_match_of_a_long_row_with_the_number_of_runs() {
         let buffer = Render::new(&finder(LONG)).run().buffer;
         let row = text(&buffer, FIRST_ROW);
 
-        assert_eq!(row, "  echo one… six seven eight nine; ls (2)");
+        assert_eq!(row, "  echo one ⋯ ix seven eight nine; ls (2)");
         assert_eq!(
             buffer[(
                 u16::try_from(row.find("ls").unwrap()).unwrap() - 2,

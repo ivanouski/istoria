@@ -21,6 +21,7 @@ pub fn config() -> Config {
         bar: '▪',
         border: false,
         head: 10,
+        gap: '⋯',
         preview: false,
         times: true,
         search: SearchMode::Keyword,

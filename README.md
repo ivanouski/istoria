@@ -162,6 +162,7 @@ layout  = "weights" # the most run lately first, or "recent": the latest first
 bar     = "▪"       # a step of the weight bars, one column: "❯", "█", "•", "|", "#"
 border  = false     # a line on the far edge of the pane
 head    = 10        # columns kept of a long command's start, 0 for none
+gap     = "…"       # between that start and the rest, one column: "⋯", "┆", "»", "✂"
 preview = false     # the selected command in full when its row is cut
 times   = true      # when each command ran, if the history has times
 search  = "keyword" # words anywhere, or "prefix": the start of commands

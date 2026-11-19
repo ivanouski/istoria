@@ -21,6 +21,7 @@ layout  = "weights" # the most run lately first, or "recent": the latest first
 bar     = "▪"       # a step of the weight bars, one column: "❯", "█", "•", "|", "#"
 border  = false     # a line on the far edge of the pane
 head    = 10        # columns kept of a long command's start, 0 for none
+gap     = "…"       # between that start and the rest, one column: "⋯", "┆", "»", "✂"
 preview = false     # the selected command in full when its row is cut
 times   = true      # when each command ran, if the history has times
 search  = "keyword" # words anywhere, or "prefix": the start of commands
@@ -39,6 +40,7 @@ selected = { bg = "dark-gray" }  # the selected row, under the match
 const DEFAULT_HEIGHT: u16 = 12;
 const DEFAULT_BAR: char = '▪';
 const DEFAULT_HEAD: usize = 10;
+const DEFAULT_GAP: char = '…';
 /// The prompt line, the divider and a row of the list
 const MIN_HEIGHT: u16 = 3;
 
@@ -57,6 +59,9 @@ pub struct Config {
     pub border: bool,
     /// Most columns of a command's start kept when its row cuts what follows, 0 for none
     pub head: usize,
+    /// Between the kept start of a cut command and the rest, one column wide
+    #[serde(deserialize_with = "gap")]
+    pub gap: char,
     /// The selected command in full when its row is cut
     pub preview: bool,
     /// When each command ran, if the history has times
@@ -121,6 +126,7 @@ impl Default for Config {
             bar: DEFAULT_BAR,
             border: false,
             head: DEFAULT_HEAD,
+            gap: DEFAULT_GAP,
             preview: false,
             times: true,
             search: SearchMode::default(),
@@ -240,13 +246,22 @@ fn height<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u16, D::Error> {
 
 /// One character one column wide, so the bars fit the column of the times
 fn bar<'de, D: Deserializer<'de>>(deserializer: D) -> Result<char, D::Error> {
+    one_column("bar", deserializer)
+}
+
+/// One character one column wide, so the rest of a cut command keeps its room
+fn gap<'de, D: Deserializer<'de>>(deserializer: D) -> Result<char, D::Error> {
+    one_column("gap", deserializer)
+}
+
+fn one_column<'de, D: Deserializer<'de>>(key: &str, deserializer: D) -> Result<char, D::Error> {
     let text = String::deserialize(deserializer)?;
     let mut chars = text.chars();
 
     match (chars.next(), chars.next()) {
-        (Some(bar), None) if bar.width() == Some(1) => Ok(bar),
+        (Some(symbol), None) if symbol.width() == Some(1) => Ok(symbol),
         _ => Err(de::Error::custom(format!(
-            "bar must be one character one column wide, not \"{}\"",
+            "{key} must be one character one column wide, not \"{}\"",
             text.escape_default()
         ))),
     }
@@ -347,6 +362,7 @@ mod tests {
         assert_eq!(config.bar, Config::default().bar);
         assert_eq!(config.border, Config::default().border);
         assert_eq!(config.head, Config::default().head);
+        assert_eq!(config.gap, Config::default().gap);
         assert_eq!(config.preview, Config::default().preview);
         assert_eq!(config.times, Config::default().times);
         assert_eq!(config.search, Config::default().search);
@@ -430,6 +446,23 @@ mod tests {
         assert_eq!(Config::parse("head = 0\n").unwrap().head, 0);
         assert!(error("head = -1\n").contains("invalid value"));
         assert!(error("head = \"10\"\n").contains("expected usize"));
+    }
+
+    #[test]
+    fn reads_the_gap() {
+        assert_eq!(Config::parse("").unwrap().gap, '…');
+        assert_eq!(Config::parse("gap = \"┆\"\n").unwrap().gap, '┆');
+        assert_eq!(Config::parse("gap = \"|\"\n").unwrap().gap, '|');
+    }
+
+    #[test]
+    fn rejects_gaps_other_than_one_column_wide() {
+        let expected = |text| format!("gap must be one character one column wide, not \"{text}\"");
+
+        assert!(error("gap = \"\"\n").contains(&expected("")));
+        assert!(error("gap = \"..\"\n").contains(&expected("..")));
+        assert!(error("gap = \"✂️\"\n").contains(&expected("\\u{2702}\\u{fe0f}")));
+        assert!(error("gap = 1\n").contains("expected a string"));
     }
 
     #[test]

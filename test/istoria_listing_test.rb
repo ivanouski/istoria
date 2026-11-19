@@ -152,11 +152,19 @@ class IstoriaListingTest < IstoriaTestCase
     write_config(preview: true)
     start('deploy')
 
-    assert_equal "  kubectl…#{LONG_COMMAND[-70..]}", @session.screen[FIRST_ROW]
+    assert_equal "  kubectl ⋯ #{LONG_COMMAND[-68..].lstrip}", @session.screen[FIRST_ROW]
 
     divider = @session.screen.index('─' * 80)
 
     assert_equal LONG_COMMAND, @session.screen[(divider + 1)..].take_while { |line| !line.empty? }.join(' ')
+  end
+
+  def test_draws_the_gap_after_the_start_of_a_long_command_with_the_gap_from_the_config
+    File.write(@history, "#{LONG_COMMAND}\nls\n")
+    write_config(gap: '|')
+    start('deploy')
+
+    assert_equal "  kubectl | #{LONG_COMMAND[-68..].lstrip}", @session.screen[FIRST_ROW]
   end
 
   def test_keeps_no_start_of_a_long_command_with_a_head_of_zero
