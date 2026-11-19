@@ -20,6 +20,7 @@ list    = "below"   # or "above" the prompt line, like fzf
 layout  = "weights" # the most run lately first, or "recent": the latest first
 bar     = "▪"       # a step of the weight bars, one column: "❯", "█", "•", "|", "#"
 border  = false     # a line on the far edge of the pane
+head    = 10        # columns kept of a long command's start, 0 for none
 preview = false     # the selected command in full when its row is cut
 times   = true      # when each command ran, if the history has times
 search  = "keyword" # words anywhere, or "prefix": the start of commands
@@ -37,6 +38,7 @@ selected = { bg = "dark-gray" }  # the selected row, under the match
 
 const DEFAULT_HEIGHT: u16 = 12;
 const DEFAULT_BAR: char = '▪';
+const DEFAULT_HEAD: usize = 10;
 /// The prompt line, the divider and a row of the list
 const MIN_HEIGHT: u16 = 3;
 
@@ -53,6 +55,8 @@ pub struct Config {
     pub bar: char,
     /// A line on the pane's edge away from the prompt line
     pub border: bool,
+    /// Most columns of a command's start kept when its row cuts what follows, 0 for none
+    pub head: usize,
     /// The selected command in full when its row is cut
     pub preview: bool,
     /// When each command ran, if the history has times
@@ -116,6 +120,7 @@ impl Default for Config {
             layout: Layout::default(),
             bar: DEFAULT_BAR,
             border: false,
+            head: DEFAULT_HEAD,
             preview: false,
             times: true,
             search: SearchMode::default(),
@@ -341,6 +346,7 @@ mod tests {
         assert_eq!(config.layout, Config::default().layout);
         assert_eq!(config.bar, Config::default().bar);
         assert_eq!(config.border, Config::default().border);
+        assert_eq!(config.head, Config::default().head);
         assert_eq!(config.preview, Config::default().preview);
         assert_eq!(config.times, Config::default().times);
         assert_eq!(config.search, Config::default().search);
@@ -415,6 +421,15 @@ mod tests {
         assert!(Config::parse("border = true\n").unwrap().border);
         assert!(!Config::parse("border = false\n").unwrap().border);
         assert!(error("border = \"yes\"\n").contains("expected a boolean"));
+    }
+
+    #[test]
+    fn reads_the_head() {
+        assert_eq!(Config::parse("").unwrap().head, 10);
+        assert_eq!(Config::parse("head = 16\n").unwrap().head, 16);
+        assert_eq!(Config::parse("head = 0\n").unwrap().head, 0);
+        assert!(error("head = -1\n").contains("invalid value"));
+        assert!(error("head = \"10\"\n").contains("expected usize"));
     }
 
     #[test]

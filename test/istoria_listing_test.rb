@@ -152,11 +152,19 @@ class IstoriaListingTest < IstoriaTestCase
     write_config(preview: true)
     start('deploy')
 
-    assert_equal "  …#{LONG_COMMAND[-77..]}", @session.screen[FIRST_ROW]
+    assert_equal "  kubectl…#{LONG_COMMAND[-70..]}", @session.screen[FIRST_ROW]
 
     divider = @session.screen.index('─' * 80)
 
     assert_equal LONG_COMMAND, @session.screen[(divider + 1)..].take_while { |line| !line.empty? }.join(' ')
+  end
+
+  def test_keeps_no_start_of_a_long_command_with_a_head_of_zero
+    File.write(@history, "#{LONG_COMMAND}\nls\n")
+    write_config(head: 0)
+    start('deploy')
+
+    assert_equal "  …#{LONG_COMMAND[-77..]}", @session.screen[FIRST_ROW]
   end
 
   def test_ignores_letters_typed_with_alt

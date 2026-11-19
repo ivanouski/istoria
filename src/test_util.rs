@@ -20,6 +20,7 @@ pub fn config() -> Config {
         layout: Layout::Recent,
         bar: '▪',
         border: false,
+        head: 10,
         preview: false,
         times: true,
         search: SearchMode::Keyword,
